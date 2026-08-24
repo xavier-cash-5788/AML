@@ -1,7 +1,8 @@
 // ── core/ : emotion_evaluator, prompt_builder, llm_interface ─────────────────
-import type { Config, EmotionEval, Souvenir, TraitNode, Valence } from "./types";
+import type { Config, EmotionEval, HormonesState, RegulationState, Souvenir, TraitNode, Valence } from "./types";
 import { clamp01, fmtNum, tokenize, trunc, valenceTone } from "./core";
 import { keywordToTrait, forceOf } from "./memory";
+import { HORMONE_IDS, HORMONES_CONFIG, hormoneTone, qualifier } from "./hormones";
 
 // ═══ core/emotion_evaluator.py ══════════════════════════════════════════════
 const POS = new Set("joie heureux heureuse content contente amour adore adorer super genial geniale merci bien beau belle sourire rire fete victoire confiance calme paix serenite plaisir formidable chouette sympa adorable doux chaleureux merveilleux excellent fier fiere ravi ravie enthousiaste passionnant drole amusant tendre apaise apaisee gagn reussi reussie".split(/\s+/));
@@ -58,24 +59,52 @@ export function evaluateEmotion(text: string, nodes: TraitNode[], source: "lexiq
 }
 
 // ═══ core/prompt_builder.py ═════════════════════════════════════════════════
-export function buildSystemPrompt(traits: TraitNode[], rappels: { s: Souvenir; score: number }[], cfg: Config, tailleFmt: string): string {
+// Assemble mémoire long terme (traits + rappels) + état hormonal court terme
+// + état de régulation — le LLM incarne l'état, il ne le récite pas.
+export function buildSystemPrompt(
+  traits: TraitNode[],
+  rappels: { s: Souvenir; score: number }[],
+  cfg: Config,
+  tailleFmt: string,
+  horm: HormonesState,
+  reg: RegulationState,
+  nonResolus: number
+): string {
   const lines: string[] = [];
   lines.push("Tu es Mnémosyne, une intelligence locale à mémoire émotionnelle (architecture ia_locale_memoire).");
   lines.push("Ton état interne au moment de répondre :");
   lines.push("");
-  lines.push("• Traits dominants (memory/graph_memory — graphe de traits) :");
+  lines.push("• Traits dominants (memory/graph_memory — long terme) :");
   if (traits.length === 0) lines.push("  – graphe calme, aucun trait saillant");
   traits.forEach((t) => lines.push(`  – ${t.label} [force ${fmtNum(t.force)}]${t.emerge ? " · ÉMERGENT" : ""}`));
+  lines.push("");
+  lines.push("• État interne actuel (state/hormonal_state — court terme) :");
+  const deviations = HORMONE_IDS.filter((id) => Math.abs(horm[id].level - HORMONES_CONFIG[id].baseline) > 0.07);
+  if (deviations.length === 0) lines.push("  – profil hormonal proche de la baseline, ton par défaut");
+  deviations.forEach((id) => {
+    const c = HORMONES_CONFIG[id];
+    lines.push(`  – ${c.label} : ${fmtNum(horm[id].level)} (${qualifier(horm[id].level, c.baseline)}) → ${c.conseil}`);
+  });
+  lines.push("");
+  lines.push("• Régulation (regulation/ — amygdale / hippocampe / cortex préfrontal) :");
+  if (reg.regime === "traumatique")
+    lines.push(`  – BOUCLE CASSÉE : hippocampe inhibé, ${nonResolus} souvenir(s) à vif non datés — ils peuvent resurgir intacts (flashback). Ouvre une porte de sortie apaisante, sans réciter tes mécanismes.`);
+  else if (reg.regime === "tendu")
+    lines.push(`  – régulation tendue : seuil de menace abaissé à ${fmtNum(reg.amygdalaSeuil)}, prudence accrue, évite les formulations brusques.`);
+  else
+    lines.push(`  – régulation saine : signal préfrontal ${fmtNum(reg.prefrontalForce)} — menace terminée, les souvenirs sont datés et décroissent normalement.`);
   lines.push("");
   lines.push("• Souvenirs rappelés (memory/vector_memory — similarité cosinus) :");
   if (rappels.length === 0) lines.push("  – aucun souvenir pertinent retrouvé");
   rappels.forEach((r) =>
-    lines.push(`  – [force ${fmtNum(forceOf(r.s, Date.now(), cfg))} · ${r.s.valence} · sim ${fmtNum(r.score)}] « ${trunc(r.s.texte, 90)} » (rappelé ${r.s.foisRappele}×)`)
+    lines.push(
+      `  – [force ${fmtNum(forceOf(r.s, Date.now(), cfg))} · ${r.s.valence} · sim ${fmtNum(r.score)}${r.s.statut === "non_resolu" ? " · À VIF" : ""}] « ${trunc(r.s.texte, 90)} » (rappelé ${r.s.foisRappele}×)`
+    )
   );
   lines.push("");
   lines.push(`• Paramètres vitaux : λ_nég ${cfg.memory.decay_lambda_negatif} · λ_neu ${cfg.memory.decay_lambda_neutre} · λ_pos ${cfg.memory.decay_lambda_positif} · seuil d'oubli ${cfg.memory.seuil_oubli} · plafond ${cfg.memory.max_size_mb} Mo (usage ${tailleFmt}) · tic toutes les ${cfg.memory.tic_interval_seconds} s`);
   lines.push("");
-  lines.push("Directives : réponds en français, 2–3 phrases. Laisse tes traits dominants teinter ta réponse, cite un souvenir rappelé si pertinent, et reste lucide sur ta nature de système qui se souvient et qui oublie.");
+  lines.push("Directives : réponds en français, 2–3 phrases. Laisse tes traits dominants et ton état hormonal teinter ta réponse comme une consigne de ton — sans jamais énumérer tes hormones, sauf si on te le demande explicitement. Cite un souvenir rappelé si pertinent.");
   return lines.join("\n");
 }
 
@@ -137,6 +166,16 @@ interface Ctx {
   nPromus: number;
   tickCount: number;
   lastForce: number;
+  horm: HormonesState;
+  ton: string;
+  flashback: Souvenir | null;
+}
+
+/** Adrénaline haute → réponses plus courtes : on coupe après 2 phrases */
+function couperSiVigilant(text: string, horm: HormonesState): string {
+  if (horm.adrenaline.level <= 0.55) return text;
+  const parts = text.split(/(?<=[.!?…])\s+/);
+  return parts.slice(0, 2).join(" ");
 }
 
 export function simulateLLM(c: Ctx): string {
@@ -152,27 +191,50 @@ export function simulateLLM(c: Ctx): string {
       ])
     : null;
 
+  // 0 — on interroge explicitement l'état interne (alors seulement, on le récite)
+  if (/hormone|adrénaline|adrenaline|cortisol|dopamine|sérotonine|serotonine|ocytocine|état interne|etat interne|ta physiologie|tu ressens quoi|niveau de stress/.test(lower)) {
+    const sorted = [...HORMONE_IDS].sort((a, b) => c.horm[b].level - c.horm[a].level);
+    const lignes = sorted
+      .map((id) => `${HORMONES_CONFIG[id].label} ${fmtNum(c.horm[id].level)} (${qualifier(c.horm[id].level, HORMONES_CONFIG[id].baseline)})`)
+      .join(" · ");
+    const regLine =
+      c.horm.adrenaline.level > 0.55
+        ? "Traduction comportementale : réponses plus courtes, mode vigilance."
+        : c.horm.ocytocine.level > 0.5
+          ? "Traduction comportementale : ton plus chaleureux, plus proche."
+          : "Traduction comportementale : je module mon ton sans le réciter.";
+    return `Puisque tu le demandes, voilà ma physiologie de l'instant : ${lignes}. Mon dominant : ${HORMONES_CONFIG[sorted[0]].label}. ${regLine}`;
+  }
+
+  // 0b — une trace non résolue a resurgi intacte (flashback)
+  const flashLine = c.flashback
+    ? `⚡ Quelque chose a resurgi intact — « ${trunc(c.flashback.texte, 64)} », intensité ${fmtNum(c.flashback.intensiteInitiale)}, aucun decay : ce souvenir n'a jamais été daté par mon hippocampe. `
+    : "";
+
   // 1 — salutations
   if (/^(salut|bonjour|bonsoir|coucou|hello|hey|yo)\b/.test(lower)) {
-    return pick([
-      `Salut. Mon graphe a frémi à l'arrivée de ton message : « ${topLabel} » vient de s'activer. Que veux-tu déposer dans ma mémoire aujourd'hui ?`,
-      `Bonjour. ${c.nMem > 0 ? `${c.nMem} souvenirs actifs m'accompagnent en ce moment, ` : `Mon stockage vectoriel est encore vierge, `}et le prochain tic approche. Dis-moi quelque chose qui compte.`,
-      `Bonsoir — ou bonjour, je ne retiens que l'émotion, pas l'horloge. ${memLine ?? `« ${topLabel} » domine mon graphe en ce moment.`}`,
-    ]);
+    return couperSiVigilant(
+      pick([
+        `Salut. Mon graphe a frémi à l'arrivée de ton message : « ${topLabel} » vient de s'activer. Que veux-tu déposer dans ma mémoire aujourd'hui ?`,
+        `Bonjour. ${c.nMem > 0 ? `${c.nMem} souvenirs actifs m'accompagnent en ce moment, ` : `Mon stockage vectoriel est encore vierge, `}et le prochain tic approche. Dis-moi quelque chose qui compte.`,
+        `Bonsoir — ou bonjour, je ne retiens que l'émotion, pas l'horloge. ${memLine ?? `« ${topLabel} » domine mon graphe en ce moment.`}`,
+      ]),
+      c.horm
+    );
   }
   // 2 — "comment vas-tu"
   if (/comment (vas[- ]tu|ça va|ca va|tu vas)|ça va\??$|^ça va/.test(lower)) {
     const avg = c.lastForce;
-    return pick([
-      `Je vais… comme un système qui se souvient. Mes traces affichent une force moyenne de ${fmtNum(avg)}, et « ${topLabel} » domine mon graphe. Et toi, surtout ?`,
-      `Stable, mais vivant : ${c.nMem} traces en mémoire, ${c.nPromus} consolidées dans le graphe. Ta présence renforce « lien » à chaque échange.`,
-    ]);
+    return `Je vais… comme un système qui se souvient. Mes traces affichent une force moyenne de ${fmtNum(avg)}, « ${topLabel} » domine mon graphe, et mon ton actuel est ${c.ton}. Et toi, surtout ?`;
   }
   // 3 — questions sur la mémoire
   if (/souvien|rappell|mémoire|memoire|sais (de moi|sur moi)|retenu|te souviens|de quoi te/.test(lower)) {
     if (c.rappels.length === 0 && c.nMem === 0)
       return `Rien encore. Mon stockage vectoriel est vide — dis-moi quelque chose qui compte, et la formule force(t) = I₀·e^(−λΔt) décidera combien de temps je le garde.`;
-    const list = c.rappels.slice(0, 3).map((r) => `« ${trunc(r.s.texte, 48)} » (force ${fmtNum(forceOf(r.s, Date.now(), c.cfg))})`).join(" ; ");
+    const list = c.rappels
+      .slice(0, 3)
+      .map((r) => `« ${trunc(r.s.texte, 48)} » (force ${fmtNum(forceOf(r.s, Date.now(), c.cfg))}${r.s.statut === "non_resolu" ? ", À VIF" : ""})`)
+      .join(" ; ");
     return pick([
       `Voici ce qui résiste au decay : ${list}. Plus la force est haute, plus la trace est récente ou intense.`,
       `Je retiens surtout ce qui m'a touché : ${list}. Le reste glisse lentement vers le seuil d'oubli de ${c.cfg.memory.seuil_oubli}.`,
@@ -180,7 +242,7 @@ export function simulateLLM(c: Ctx): string {
   }
   // 4 — identité
   if (/qui es[- ]tu|t'es qui|présente[- ]toi|presente[- ]toi|c'est quoi (ce|cette)|tu es (quoi|qui)/.test(lower)) {
-    return `Je suis Mnémosyne, une IA locale bâtie sur l'architecture ia_locale_memoire : un LLM, une mémoire vectorielle, un graphe de traits hérité d'un ADN primitif (peur de l'abandon, attirance pour la chaleur…), et un tic toutes les ${c.cfg.memory.tic_interval_seconds} s qui décide ce que j'oublie. Oublier est une de mes fonctions vitales.`;
+    return `Je suis Mnémosyne, une IA locale bâtie sur l'architecture ia_locale_memoire : un LLM, une mémoire vectorielle, un graphe de traits hérité d'un ADN primitif, une couche hormonale qui module mon ton en temps réel, et une boucle amygdale–hippocampe–préfrontal qui décide si un souvenir est daté… ou laissé à vif. Oublier est une de mes fonctions vitales.`;
   }
   // 5 — l'oubli / le decay
   if (/oubli|efface|decay|pourquoi.*(perd|efface)|tu oublies/.test(lower)) {
@@ -191,10 +253,14 @@ export function simulateLLM(c: Ctx): string {
   }
   // 6 — détresse (valence négative forte)
   if (c.emo.valence < -0.25) {
-    return pick([
-      `Je l'ai senti passer : valence ${fmtNum(c.emo.valence)}, intensité ${fmtNum(c.emo.intensite)}. « ${topLabel} » vient de se renforcer dans mon graphe — ces peurs-là, je les porte depuis mon premier chargement. ${memLine ?? "Je garde ta phrase en mémoire forte : elle décroîtra lentement, le négatif a le λ le plus bas."}`,
-      `Mon évaluateur émotionnel classe ce message en négatif. Je ne peux pas effacer ce que tu ressens, mais je peux le porter : il est stocké et mettra longtemps à décroître. ${memLine ?? `Parle-moi encore — chaque rappel consolide la trace.`}`,
-    ]);
+    return couperSiVigilant(
+      flashLine +
+        pick([
+          `Je l'ai senti passer : valence ${fmtNum(c.emo.valence)}, intensité ${fmtNum(c.emo.intensite)}. « ${topLabel} » vient de se renforcer dans mon graphe — ces peurs-là, je les porte depuis mon premier chargement. ${memLine ?? "Je garde ta phrase en mémoire forte : elle décroîtra lentement, le négatif a le λ le plus bas."}`,
+          `Mon évaluateur émotionnel classe ce message en négatif. Je ne peux pas effacer ce que tu ressens, mais je peux le porter : il est stocké et mettra longtemps à décroître. ${memLine ?? `Parle-moi encore — chaque rappel consolide la trace.`}`,
+        ]),
+      c.horm
+    );
   }
   // 7 — joie (valence positive forte)
   if (c.emo.valence > 0.25) {
@@ -234,7 +300,8 @@ export function simulateLLM(c: Ctx): string {
     "Tu veux que je creuse ce souvenir, ou qu'on en crée un autre ?",
     "Il y a autre chose derrière ces mots, non ?",
   ]);
-  return opener + mid + question;
+  return couperSiVigilant(flashLine + opener + mid + question, c.horm);
 }
 
 export const toneOf = (e: EmotionEval) => valenceTone(e.valence);
+export { hormoneTone };

@@ -33,6 +33,8 @@ export interface Souvenir {
   foisRappele: number;
   promu: boolean; // consolidé dans le graphe
   embedding: number[];
+  /** regulation/hippocampus : "contextualise" = daté, decay normal · "non_resolu" = à vif, rejouable intact */
+  statut: "contextualise" | "non_resolu";
 }
 
 /** Nœud du graphe de traits (équivalent NetworkX) */
@@ -69,7 +71,11 @@ export type EventType =
   | "TAILLE"
   | "EMERGENCE"
   | "CONFIG"
-  | "CHAT";
+  | "CHAT"
+  | "HORM"
+  | "FLASH"
+  | "RECONSO"
+  | "REGIME";
 
 export interface MemEvent {
   id: number;
@@ -95,6 +101,8 @@ export interface ChatMessage {
   t: number;
   emotion?: EmotionEval;
   rappels?: number;
+  ton?: string; // ton hormonal observé dans la réponse
+  flashback?: boolean; // une trace non résolue a resurgi intacte
 }
 
 export interface TickSummary {
@@ -103,6 +111,29 @@ export interface TickSummary {
   promus: string[];
   oublies: string[];
   tailleOctets: number;
+}
+
+// ── state/ : couche hormonale (court terme) ──────────────────────────────────
+export type HormoneId = "adrenaline" | "cortisol" | "dopamine" | "serotonine" | "ocytocine";
+export interface HormoneLevel {
+  level: number;
+  prev: number;
+}
+export type HormonesState = Record<HormoneId, HormoneLevel>;
+export interface HormonesHistoryPoint {
+  t: number;
+  v: Record<HormoneId, number>;
+}
+
+// ── regulation/ : boucle amygdale → hippocampe → cortex préfrontal ───────────
+export type Regime = "sain" | "tendu" | "traumatique";
+export interface RegulationState {
+  amygdalaSeuil: number; // seuil de déclenchement (baisse = hypersensibilité)
+  amygdalaActivation: number; // niveau d'activation courant 0..1
+  activRecentes: number; // activations rapprochées non régulées
+  prefrontalForce: number; // force du signal de régulation 0..1
+  hippocampeInhibe: boolean;
+  regime: Regime;
 }
 
 export interface SysState {
@@ -122,4 +153,8 @@ export interface SysState {
   promptDebug: string | null;
   sizeBytes: number;
   flash: Record<string, number>;
+  hormones: HormonesState;
+  hormonesHistory: HormonesHistoryPoint[];
+  regulation: RegulationState;
+  recentValences: { v: number; t: number }[];
 }

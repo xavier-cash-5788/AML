@@ -3,7 +3,15 @@ import type { Config, Souvenir, TraitEdge, TraitNode, Valence } from "./types";
 import { PRIMITIVE_SEED, clamp01, clamp, cosine, embed, uid } from "./core";
 
 // ═══ memory/vector_memory.py ════════════════════════════════════════════════
-export function vectorAdd(memories: Souvenir[], texte: string, valence: Valence, valenceScore: number, traits: string[], intensite: number): Souvenir[] {
+export function vectorAdd(
+  memories: Souvenir[],
+  texte: string,
+  valence: Valence,
+  valenceScore: number,
+  traits: string[],
+  intensite: number,
+  statut: "contextualise" | "non_resolu" = "contextualise"
+): Souvenir[] {
   const s: Souvenir = {
     id: uid(),
     texte,
@@ -15,6 +23,7 @@ export function vectorAdd(memories: Souvenir[], texte: string, valence: Valence,
     foisRappele: 0,
     promu: false,
     embedding: embed(texte),
+    statut,
   };
   return [...memories, s];
 }
@@ -121,6 +130,8 @@ export function graphTick(nodes: TraitNode[]): TraitNode[] {
 // ═══ memory/decay_engine.py ═════════════════════════════════════════════════
 /** force(t) = I₀ × e^(−λ·Δt), λ dépend de la valence — Δt en minutes */
 export function forceOf(s: Souvenir, now: number, cfg: Config): number {
+  // regulation/hippocampus : un souvenir non résolu n'est pas daté → pas de decay
+  if (s.statut === "non_resolu") return s.intensiteInitiale;
   const lam =
     s.valence === "negatif"
       ? cfg.memory.decay_lambda_negatif

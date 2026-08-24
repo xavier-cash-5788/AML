@@ -6,6 +6,10 @@ import {
   seedGraph, totalSizeBytes, vectorAdd, vectorDelete, vectorSearch, vectorUpdateForce,
 } from "./memory";
 import { evaluateEmotion } from "./brain";
+import { HORMONES_CONFIG, hormonesDecay, hormonesInit, hormonesUpdate } from "./hormones";
+import {
+  amygdalaDetect, hippocampusContextualiser, prefrontalForce, regulationInit, regulationTick,
+} from "./regulation";
 
 export interface TestResult {
   file: string;
@@ -14,7 +18,7 @@ export interface TestResult {
   detail: string;
 }
 
-const mkSouvenir = (texte: string, minsAgo: number, I0: number, valence: Souvenir["valence"]): Souvenir => ({
+const mkSouvenir = (texte: string, minsAgo: number, I0: number, valence: Souvenir["valence"], statut: Souvenir["statut"] = "contextualise"): Souvenir => ({
   id: uid(),
   texte,
   creeLe: Date.now() - minsAgo * 60000,
@@ -25,6 +29,7 @@ const mkSouvenir = (texte: string, minsAgo: number, I0: number, valence: Souveni
   foisRappele: 0,
   promu: false,
   embedding: embed(texte),
+  statut,
 });
 
 export function runAllTests(): TestResult[] {
@@ -80,6 +85,8 @@ export function runAllTests(): TestResult[] {
     add(f, "promotion si score ≥ seuil", promotionScore(strong, Date.now(), cfg) >= cfg.memory.seuil_promotion_graphe, `score ${promotionScore(strong, Date.now(), cfg).toFixed(2)} ≥ ${cfg.memory.seuil_promotion_graphe}`);
     const weak = mkSouvenir("vieux souvenir faible", 500, 0.1, "neutre");
     add(f, "oubli si force < seuil_oubli", forceOf(weak, Date.now(), cfg) < cfg.memory.seuil_oubli, `force ${forceOf(weak, Date.now(), cfg).toFixed(4)} < ${cfg.memory.seuil_oubli}`);
+    const aVif = mkSouvenir("traumatisme non résolu", 500, 0.9, "negatif", "non_resolu");
+    add(f, "un souvenir non résolu échappe au decay", Math.abs(forceOf(aVif, Date.now() + 60 * 60000, cfg) - 0.9) < 1e-9, `force constante ${forceOf(aVif, Date.now() + 60 * 60000, cfg).toFixed(2)} après 60 min`);
     add(f, "size_manager calcule une taille positive", totalSizeBytes([strong], seedGraph().nodes, seedGraph().edges, 10) > 0, `${totalSizeBytes([strong], seedGraph().nodes, seedGraph().edges, 10)} octets estimés`);
   }
 
@@ -97,6 +104,43 @@ export function runAllTests(): TestResult[] {
     const soft = evaluateEmotion("c'est un peu ennuyeux", nodes);
     add(f, "intensité sensible aux marqueurs (!, CAPITALES)", intense.intensite > soft.intensite, `${intense.intensite.toFixed(2)} > ${soft.intensite.toFixed(2)}`);
     add(f, "embedding : phrases proches plus similaires que lointaines", cosine(embed("la peur du noir la nuit"), embed("j'ai peur quand il fait sombre")) > cosine(embed("la peur du noir la nuit"), embed("recette de tarte aux pommes")), "cos(proche) > cos(lointain)");
+  }
+
+  // ── tests/test_hormonal_state.py ──
+  {
+    const f = "tests/test_hormonal_state.py";
+    const h0 = hormonesInit();
+    add(f, "init : toutes les hormones à leur baseline", Math.abs(h0.adrenaline.level - HORMONES_CONFIG.adrenaline.baseline) < 1e-9 && Math.abs(h0.serotonine.level - HORMONES_CONFIG.serotonine.baseline) < 1e-9, `adrénaline ${h0.adrenaline.level.toFixed(2)} = baseline ${HORMONES_CONFIG.adrenaline.baseline}`);
+    const h1 = hormonesUpdate(h0, { intensite: 0.9, valence: -0.8, surprise: 0.9, social: 0 });
+    add(f, "menace forte → pic d'adrénaline", h1.adrenaline.level - h0.adrenaline.level > 0.3, `Δ +${(h1.adrenaline.level - h0.adrenaline.level).toFixed(2)} (vitesse montée ${HORMONES_CONFIG.adrenaline.vitesse_montee})`);
+    const dAdr = hormonesDecay({ ...h1, adrenaline: { level: 0.8, prev: 0.8 } }).adrenaline.level;
+    const dCort = hormonesDecay({ ...h1, cortisol: { level: 0.8, prev: 0.8 } }).cortisol.level;
+    add(f, "l'adrénaline redescend plus vite que le cortisol", 0.8 - dAdr > 0.8 - dCort, `Δ adrénaline ${(0.8 - dAdr).toFixed(3)} vs Δ cortisol ${(0.8 - dCort).toFixed(3)} par tic`);
+    let h2 = hormonesInit();
+    for (let i = 0; i < 30; i++) h2 = hormonesDecay(h2);
+    add(f, "30 tics sans stimulus → retour quasi-baseline", Math.abs(h2.cortisol.level - HORMONES_CONFIG.cortisol.baseline) < 0.05, `cortisol ${h2.cortisol.level.toFixed(3)} (baseline ${HORMONES_CONFIG.cortisol.baseline})`);
+    const h3 = hormonesUpdate(h0, { intensite: 0.6, valence: 0.5, surprise: 0.8, social: 0.9 });
+    add(f, "lien social + positif → ocytocine et dopamine montent", h3.ocytocine.level > h0.ocytocine.level && h3.dopamine.level > h0.dopamine.level, `ocy ${h0.ocytocine.level.toFixed(2)}→${h3.ocytocine.level.toFixed(2)} · dop ${h0.dopamine.level.toFixed(2)}→${h3.dopamine.level.toFixed(2)}`);
+  }
+
+  // ── tests/test_regulation.py ──
+  {
+    const f = "tests/test_regulation.py";
+    const r0 = regulationInit();
+    add(f, "init : seuil amygdale 0,60 · préfrontal 0,75", Math.abs(r0.amygdalaSeuil - 0.6) < 1e-9 && Math.abs(r0.prefrontalForce - 0.75) < 1e-9, `seuil ${r0.amygdalaSeuil}, force ${r0.prefrontalForce}`);
+    const a1 = amygdalaDetect(r0, 0.95, -0.85).r;
+    add(f, "menace forte active l'amygdale et abaisse le seuil", a1.activRecentes === 1 && a1.amygdalaSeuil < r0.amygdalaSeuil, `seuil ${r0.amygdalaSeuil} → ${a1.amygdalaSeuil.toFixed(2)} (hypersensibilisation)`);
+    const a2 = amygdalaDetect(a1, 0.95, -0.85).r;
+    add(f, "activations répétées → seuil encore plus bas", a2.amygdalaSeuil < a1.amygdalaSeuil && a2.activRecentes === 2, `seuil ${a2.amygdalaSeuil.toFixed(2)} après 2 activations`);
+    const hCalm = hormonesInit();
+    const pfFort = prefrontalForce(hCalm, r0);
+    add(f, "préfrontal fort à l'état calme", pfFort > 0.7, `force ${pfFort.toFixed(2)}`);
+    const hStress = { ...hCalm, cortisol: { level: 0.9, prev: 0.9 }, adrenaline: { level: 0.9, prev: 0.9 } };
+    const pfFaible = prefrontalForce(hStress, { ...r0, amygdalaActivation: 0.9 });
+    add(f, "cortisol + adrénaline hauts → préfrontal écrasé", pfFaible < 0.3, `force ${pfFaible.toFixed(2)} (×0,3 au-dessus du seuil critique)`);
+    add(f, "hippocampe inhibé si amygdale haute + préfrontal faible", hippocampusContextualiser(0.8, 0.3) === "non_resolu" && hippocampusContextualiser(0.8, 0.7) === "contextualise", "inhibé (0,8 · 0,3) vs contextualisé (0,8 · 0,7)");
+    const rTick = regulationTick({ ...r0, amygdalaActivation: 0.8, prefrontalForce: 0.5, activRecentes: 2 }, 0.6, 0);
+    add(f, "tic + interactions positives → préfrontal récupère, seuil remonte", rTick.prefrontalForce > 0.5 && rTick.amygdalaSeuil >= r0.amygdalaSeuil - 1e-9, `force 0,50 → ${rTick.prefrontalForce.toFixed(2)} · seuil ${rTick.amygdalaSeuil.toFixed(2)}`);
   }
 
   return R;
