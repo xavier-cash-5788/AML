@@ -155,6 +155,16 @@ import type { HabitsState } from "./habits";
 import type { SemanticNetwork } from "./semantic";
 import type { UserMentalState } from "./theory_of_mind";
 import type { SpontaneityState } from "./spontaneous";
+import type { RLState } from "./cognitive_rl";
+
+// État pour le moteur RPE et le Gating Préfrontal
+export interface RPEState {
+  predictedValence: number; // Valence attendue avant réponse
+  lastRPE: number; // Dernière erreur de prédiction calculée
+  learningMultiplier: number; // Multiplicateur d'apprentissage actuel
+  inhibitionActive: boolean; // Si le PFC inhibe certaines réponses
+  forcedConstraints: string[]; // Contraintes actives à injecter dans le prompt
+}
 
 // ── brain/ : visualisation des zones cérébrales ────────────────────────────────
 export interface BrainZoneState {
@@ -200,4 +210,6 @@ export interface SysState {
   theoryOfMind: UserMentalState;
   spontaneity: SpontaneityState;
   brainZones: BrainZonesState;
+  rl: RLState; // Apprentissage par renforcement cognitif
+  rpe: RPEState; // Moteur d'erreur de prédiction et gating préfrontal
 }

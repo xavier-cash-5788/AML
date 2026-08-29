@@ -21,6 +21,9 @@ import { semanticInit, semanticDecay, semanticSummary, extractSemanticFromEpisod
 import { theoryOfMindInit, theoryOfMindDecay, theoryOfMindSummary, inferIntentions, inferBeliefs, updateEmotionalState, updateTrust, updateEngagement } from "./theory_of_mind";
 import { spontaneityInit, generateSpontaneousThoughts, selectNextSpontaneousThought, markThoughtExpressed, cleanupThoughts, adjustInhibition, spontaneitySummary } from "./spontaneous";
 import { validateResponse, validationSummary, type ValidationConfig } from "./guardrail";
+import { cognitiveRL, type RLState } from "./cognitive_rl";
+import { rpeEngine, type RPEState } from "./rpe_engine";
+import { prefrontalCortex } from "./prefrontal_gating";
 
 const LS_KEY = "mnemosyne.state.v1";
 const MAX_EVENTS = 260;
@@ -81,6 +84,14 @@ function freshState(): SysState {
       striatum: { intensity: 0, lastActive: now },
       temporal: { intensity: 0, lastActive: now },
     },
+    rl: cognitiveRL.getState(),
+    rpe: {
+      predictedValence: 0,
+      lastRPE: 0,
+      learningMultiplier: 1,
+      inhibitionActive: false,
+      forcedConstraints: []
+    }
   };
 }
 
@@ -116,6 +127,9 @@ class MemorySystem {
         semantic: persisted.semantic ?? base.semantic,
         theoryOfMind: persisted.theoryOfMind ?? base.theoryOfMind,
         spontaneity: persisted.spontaneity ?? base.spontaneity,
+        brainZones: persisted.brainZones ?? base.brainZones,
+        rl: persisted.rl ?? base.rl,
+        rpe: persisted.rpe ?? base.rpe
       } as SysState;
       this.log("SEED", "memory/memory_scheduler", "Session restaurée depuis storage/ (localStorage)");
     } else {
