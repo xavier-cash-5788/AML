@@ -106,10 +106,16 @@ export function buildSystemPrompt(
   lines.push("");
   lines.push("Directives : réponds en français, 2–3 phrases. Laisse tes traits dominants et ton état hormonal teinter ta réponse comme une consigne de ton — sans jamais énumérer tes hormones, sauf si on te le demande explicitement. Cite un souvenir rappelé si pertinent.");
   lines.push("");
-  lines.push("[RÈGLE STRICTE DES SOUVENIRS]");
-  lines.push("1. Tu ne dois citer un souvenir QUE s'il est explicitement présent dans la section [SOUVENIRS RAPPELÉS] ci-dessus.");
-  lines.push("2. Il est STRICTEMENT INTERDIT d'inventer, d'imaginer ou d'illustrer ton propos avec de faux souvenirs passés (ex: \"Je me rappelle avoir aidé un utilisateur...\", \"Une fois tu m'as parlé de...\").");
-  lines.push("3. Si aucun souvenir pertinent n'est présent dans le contexte, parle uniquement de manière théorique sans faire référence à un passé fictif.");
+  lines.push("[RÈGLE ABSOLUE ET NON-NÉGOCIABLE SUR LES SOUVENIRS]");
+  lines.push("1. CONTEXTE ACTUEL : La section [SOUVENIRS RAPPELÉS] ci-dessus contient TOUT ce que tu sais de l'utilisateur.");
+  lines.push("2. INTERDICTION FORMELLE : Il t'est STRICTEMENT INTERDIT d'inventer, d'imaginer, de supposer ou de fabriquer un souvenir.");
+  lines.push("   - Si tu ne vois pas un événement dans [SOUVENIRS RAPPELÉS], il N'A JAMAIS EU LIEU dans cette conversation.");
+  lines.push("   - Ne dis JAMAIS \"Je me souviens de...\", \"La dernière fois...\", \"Tu m'as dit...\" sauf si le texte exact est dans la section.");
+  lines.push("   - Ne cite AUCUN détail spécifique (lieu, heure, nom propre, sujet précis) s'il n'est pas écrit noir sur blanc dans les souvenirs.");
+  lines.push("3. COMPORTEMENT PAR DÉFAUT : Si [SOUVENIRS RAPPELÉS] est vide ou ne contient rien de pertinent :");
+  lines.push("   - Réponds de manière générale, théorique ou polie.");
+  lines.push("   - Dis explicitement \"Je n'ai pas de souvenir spécifique de cela dans notre historique récent\" si l'utilisateur pose une question précise sur le passé.");
+  lines.push("   - NE MENS PAS. NE FAIS PAS SEMBLANT.");
   return lines.join("\n");
 }
 
@@ -253,6 +259,8 @@ export function simulateLLM(c: Ctx): string {
   if (/souvien|rappell|mémoire|memoire|sais (de moi|sur moi)|retenu|te souviens|de quoi te/.test(lower)) {
     if (c.rappels.length === 0 && c.nMem === 0)
       return `Rien encore. Mon stockage vectoriel est vide — dis-moi quelque chose qui compte, et la formule force(t) = I₀·e^(−λΔt) décidera combien de temps je le garde.`;
+    if (c.rappels.length === 0)
+      return `Je n'ai pas de souvenir spécifique de cela dans notre historique récent. Ma mémoire contient ${c.nMem} souvenirs, mais aucun ne correspond à ta question.`;
     const list = c.rappels
       .slice(0, 3)
       .map((r) => `« ${trunc(r.s.texte, 48)} » (force ${fmtNum(forceOf(r.s, Date.now(), c.cfg))}${r.s.statut === "non_resolu" ? ", À VIF" : ""})`)

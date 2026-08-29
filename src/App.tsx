@@ -8,9 +8,10 @@ import GraphPanel from "./components/GraphPanel";
 import LogPanel from "./components/LogPanel";
 import ConfigPanel from "./components/ConfigPanel";
 import TestsPanel from "./components/TestsPanel";
+import DebugPanel from "./components/DebugPanel";
 import { Corners } from "./components/ui";
 
-type Tab = "apercu" | "vecteurs" | "graphe" | "journal" | "config" | "tests";
+type Tab = "apercu" | "vecteurs" | "graphe" | "journal" | "config" | "tests" | "debug";
 
 const MODULES = [
   "core/llm_interface.py",
@@ -31,6 +32,7 @@ const TABS: { id: Tab; label: string; file: string }[] = [
   { id: "journal", label: "Journal", file: "memory_events.jsonl" },
   { id: "config", label: "Config", file: "config.json" },
   { id: "tests", label: "Tests", file: "tests/" },
+  { id: "debug", label: "Debug", file: "debugSuite.ts" },
 ];
 
 function Logo() {
@@ -136,6 +138,7 @@ export default function App() {
               {tab === "journal" && <div className="xl:h-full min-h-[480px] xl:min-h-0"><LogPanel delay={0} /></div>}
               {tab === "config" && <ConfigPanel delay={0} />}
               {tab === "tests" && <TestsPanel delay={0} />}
+              {tab === "debug" && <DebugPanel delay={0} />}
             </div>
           </div>
         </div>

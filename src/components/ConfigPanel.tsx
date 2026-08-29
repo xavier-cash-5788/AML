@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { system, useSystem } from "../engine/system";
 import { DEFAULT_CONFIG, fmtNum } from "../engine/core";
 import { testOllama, fetchOllamaModels } from "../engine/brain";
@@ -36,6 +36,13 @@ export default function ConfigPanel({ delay }: { delay: number }) {
   const [loadingModels, setLoadingModels] = useState(false);
   
   const guardrail = cfg.guardrail || DEFAULT_CONFIG.guardrail!;
+
+  // Charger automatiquement les modèles Ollama au montage et quand le provider change
+  useEffect(() => {
+    if (cfg.llm.provider === "ollama") {
+      loadModels();
+    }
+  }, [cfg.llm.provider, cfg.llm.endpoint]);
 
   const runTest = async () => {
     setTesting(true);
