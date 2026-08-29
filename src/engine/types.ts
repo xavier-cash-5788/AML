@@ -19,6 +19,14 @@ export interface Config {
     seuil_oubli: number;
     max_variation_par_interaction: number;
   };
+  guardrail?: {
+    enabled: boolean;
+    provider: "simule" | "ollama" | "none";
+    model?: string;
+    endpoint?: string;
+    timeoutMs?: number;
+    maxLatencyAcceptable?: number;
+  };
 }
 
 /** Un souvenir du stockage vectoriel (équivalent ChromaDB) */
@@ -76,7 +84,8 @@ export type EventType =
   | "FLASH"
   | "RECONSO"
   | "REGIME"
-  | "SPONT";
+  | "SPONT"
+  | "GUARD";
 
 export interface MemEvent {
   id: number;

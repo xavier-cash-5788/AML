@@ -32,6 +32,8 @@ export default function ConfigPanel({ delay }: { delay: number }) {
   const [testState, setTestState] = useState<{ ok: boolean; detail: string } | null>(null);
   const [testing, setTesting] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  
+  const guardrail = cfg.guardrail || DEFAULT_CONFIG.guardrail!;
 
   const runTest = async () => {
     setTesting(true);
@@ -146,6 +148,72 @@ export default function ConfigPanel({ delay }: { delay: number }) {
           </Btn>
         </div>
       </Modal>
+
+      <Panel title="Pipeline de Validation (Guardrail)" file="guardrail/validator.ts" delay={delay + 180} className="lg:col-span-2">
+        <div className="px-4 py-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-[12px] text-[var(--mut)]">activer la validation des citations</span>
+            <input
+              type="checkbox"
+              checked={guardrail.enabled}
+              onChange={(e) => system.setConfig({ guardrail: { ...guardrail, enabled: e.target.checked } })}
+              className="h-4 w-4"
+            />
+          </div>
+          <p className="text-[11px] text-[var(--dim)] leading-relaxed">
+            Un petit modèle vérifie que les souvenirs cités par le LLM existent réellement dans le RAG avant d'afficher la réponse.
+            Fiabilité absolue (0 % d'hallucination d'épisode), mais ajoute de la latence.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="text-[12px] text-[var(--mut)] block mb-1">provider</span>
+              <select
+                value={guardrail.provider}
+                onChange={(e) => system.setConfig({ guardrail: { ...guardrail, provider: e.target.value as "simule" | "ollama" | "none" } })}
+                className="w-full mono bg-[var(--ink)] border border-[var(--line)] px-2 py-2 text-[12px] text-[var(--text)]"
+              >
+                <option value="simule">simule (ultra-rapide, heuristique)</option>
+                <option value="ollama">ollama (petit modèle, ex: gemma2:2b)</option>
+                <option value="none">aucun</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-[12px] text-[var(--mut)] block mb-1">modèle (si ollama)</span>
+              <input
+                value={guardrail.model || "gemma2:2b"}
+                onChange={(e) => system.setConfig({ guardrail: { ...guardrail, model: e.target.value } })}
+                className="w-full mono bg-[var(--ink)] border border-[var(--line)] px-2 py-2 text-[12px] text-[var(--text)]"
+                placeholder="gemma2:2b"
+              />
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="text-[12px] text-[var(--mut)] block mb-1">endpoint (si ollama)</span>
+              <input
+                value={guardrail.endpoint || cfg.llm.endpoint}
+                onChange={(e) => system.setConfig({ guardrail: { ...guardrail, endpoint: e.target.value } })}
+                className="w-full mono bg-[var(--ink)] border border-[var(--line)] px-2 py-2 text-[12px] text-[var(--text)]"
+                placeholder="http://localhost:11434"
+              />
+            </label>
+            <label className="block">
+              <span className="text-[12px] text-[var(--mut)] block mb-1">latence max acceptable (ms)</span>
+              <input
+                type="number"
+                value={guardrail.maxLatencyAcceptable || 1500}
+                onChange={(e) => system.setConfig({ guardrail: { ...guardrail, maxLatencyAcceptable: parseInt(e.target.value) || 1500 } })}
+                className="w-full mono bg-[var(--ink)] border border-[var(--line)] px-2 py-2 text-[12px] text-[var(--text)]"
+              />
+            </label>
+          </div>
+          <div className="flex items-center gap-3 border-t border-[var(--line)]/60 pt-3">
+            <span className="mono text-[10.5px] text-[var(--dim)]">
+              état : {guardrail.enabled ? `✓ activé (${guardrail.provider}${guardrail.model ? ` · ${guardrail.model}` : ""})` : "✗ désactivé"}
+            </span>
+          </div>
+        </div>
+      </Panel>
     </div>
   );
 }

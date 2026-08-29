@@ -20,6 +20,7 @@ import { habitsInit, habitsDecay, habitsSummary, extractContext, reinforceHabit 
 import { semanticInit, semanticDecay, semanticSummary, extractSemanticFromEpisodic } from "./semantic";
 import { theoryOfMindInit, theoryOfMindDecay, theoryOfMindSummary, inferIntentions, inferBeliefs, updateEmotionalState, updateTrust, updateEngagement } from "./theory_of_mind";
 import { spontaneityInit, generateSpontaneousThoughts, selectNextSpontaneousThought, markThoughtExpressed, cleanupThoughts, adjustInhibition, spontaneitySummary } from "./spontaneous";
+import { validateResponse, validationSummary, type ValidationConfig } from "./guardrail";
 
 const LS_KEY = "mnemosyne.state.v1";
 const MAX_EVENTS = 260;
@@ -511,6 +512,30 @@ class MemorySystem {
       await new Promise((r) => setTimeout(r, 700 + Math.random() * 800));
       answer = this.localAnswer(texte, emo, hits, traitsActifs, horm, ton, flash?.s ?? null);
       this.log("LLM", "core/llm_interface", `moteur simulé : réponse contextuelle générée (ton « ${ton} »)`);
+    }
+
+    // 6b) guardrail/validator — validation des citations de souvenirs (pipeline à 2 agents)
+    const guardrailConfig: ValidationConfig = cfg.guardrail || DEFAULT_CONFIG.guardrail!;
+    if (guardrailConfig.enabled) {
+      const validationStart = Date.now();
+      const result = await validateResponse(answer, memories, guardrailConfig);
+      const validationLatency = Date.now() - validationStart;
+      
+      if (!result.valid && result.invalidCitations.length > 0) {
+        this.log("GUARD", "guardrail/validator", `⚠️ citations invalides détectées : ${result.invalidCitations.map(c => `"${trunc(c, 30)}"`).join(", ")} — latence: ${validationLatency}ms`);
+        // Appliquer la correction si disponible
+        if (result.correctedText) {
+          answer = result.correctedText;
+          this.log("GUARD", "guardrail/validator", `texte corrigé : citations invalides remplacées`);
+        }
+      } else if (result.valid) {
+        this.log("GUARD", "guardrail/validator", `✓ validation passée — ${result.citedSouvenirs.length} citation(s) vérifiée(s), latence: ${validationLatency}ms`);
+      }
+      
+      // Vérifier si la latence dépasse le seuil acceptable
+      if (validationLatency > guardrailConfig.maxLatencyAcceptable!) {
+        this.log("GUARD", "guardrail/validator", `⚡ latence élevée : ${validationLatency}ms > ${guardrailConfig.maxLatencyAcceptable}ms (seuil)`);
+      }
     }
 
     // 7) stockage vectoriel — avec le statut décidé par l'hippocampe
