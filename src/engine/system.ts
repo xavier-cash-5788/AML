@@ -18,6 +18,8 @@ import { attentionInit, attentionDecay, attentionSummary, addToFocus, autoAdjust
 import { predictionInit, makePrediction, computePredictionError, dopamineSignalFromError, isSignificantSurprise, predictionSummary } from "./prediction";
 import { habitsInit, habitsDecay, habitsSummary, extractContext, reinforceHabit } from "./habits";
 import { semanticInit, semanticDecay, semanticSummary, extractSemanticFromEpisodic } from "./semantic";
+import { theoryOfMindInit, theoryOfMindDecay, theoryOfMindSummary, inferIntentions, inferBeliefs, updateEmotionalState, updateTrust, updateEngagement } from "./theory_of_mind";
+import { spontaneityInit, generateSpontaneousThoughts, selectNextSpontaneousThought, markThoughtExpressed, cleanupThoughts, adjustInhibition, spontaneitySummary } from "./spontaneous";
 
 const LS_KEY = "mnemosyne.state.v1";
 const MAX_EVENTS = 260;
@@ -69,6 +71,8 @@ function freshState(): SysState {
     prediction: predictionInit(),
     habits: habitsInit(),
     semantic: semanticInit(),
+    theoryOfMind: theoryOfMindInit(),
+    spontaneity: spontaneityInit(),
   };
 }
 
@@ -102,6 +106,8 @@ class MemorySystem {
         prediction: persisted.prediction ?? base.prediction,
         habits: persisted.habits ?? base.habits,
         semantic: persisted.semantic ?? base.semantic,
+        theoryOfMind: persisted.theoryOfMind ?? base.theoryOfMind,
+        spontaneity: persisted.spontaneity ?? base.spontaneity,
       } as SysState;
       this.log("SEED", "memory/memory_scheduler", "Session restaurée depuis storage/ (localStorage)");
     } else {
@@ -135,7 +141,7 @@ class MemorySystem {
 
   private persist() {
     try {
-      const { config, memories, nodes, edges, events, chat, tickCount, totalForgotten, lastTick, hormones, hormonesHistory, regulation, recentValences, sleep, attention, prediction, habits, semantic } = this.state;
+      const { config, memories, nodes, edges, events, chat, tickCount, totalForgotten, lastTick, hormones, hormonesHistory, regulation, recentValences, sleep, attention, prediction, habits, semantic, theoryOfMind, spontaneity } = this.state;
       localStorage.setItem(
         LS_KEY,
         JSON.stringify({
@@ -144,7 +150,7 @@ class MemorySystem {
           chat: chat.slice(-80),
           tickCount, totalForgotten, lastTick,
           hormones, hormonesHistory: hormonesHistory.slice(-120), regulation, recentValences,
-          sleep, attention, prediction, habits, semantic,
+          sleep, attention, prediction, habits, semantic, theoryOfMind, spontaneity,
         })
       );
     } catch {
@@ -193,6 +199,12 @@ class MemorySystem {
     const promus: string[] = [];
     const oublies: string[] = [];
     let nodes = [...this.state.nodes];
+
+    // Decay Theory of Mind
+    this.state.theoryOfMind = theoryOfMindDecay(this.state.theoryOfMind, now);
+    
+    // Cleanup des pensées spontanées anciennes
+    this.state.spontaneity = cleanupThoughts(this.state.spontaneity);
 
     // 1) decay + promotion + oubli actif (les traces « à vif » échappent au decay)
     const kept: Souvenir[] = [];
@@ -343,15 +355,31 @@ class MemorySystem {
       `auto-évaluation : intensité ${emo.intensite.toFixed(2)} · valence ${emo.valence.toFixed(2)} (${emo.valenceCat}) · traits [${emo.traits_actives.join(", ") || "∅"}]`
     );
 
-    // 2) memory/vector_memory : rappel par similarité
-    const hits = vectorSearch(this.state.memories, texte, 3);
+    // Theory of Mind : mise à jour de l'état mental de l'utilisateur
+    let tomState = updateEmotionalState(this.state.theoryOfMind, emo.valence, emo.intensite, now);
+    tomState = inferIntentions(tomState, texte, emo.intensite, emo.valence, now).state;
+    tomState = inferBeliefs(tomState, texte, emo.valence, now).state;
+    tomState = updateEngagement(tomState, texte.length, (texte.match(/\?/g) || []).length);
+    this.state.theoryOfMind = tomState;
+    this.log("TOM", "theory_of_mind", `${theoryOfMindSummary(tomState)}`);
+
+    // 2) memory/vector_memory : rappel par similarité (limité par la capacité attentionnelle)
+    const maxRecalls = Math.max(2, Math.floor((1 - cognitiveLoad(this.state.attention)) * 5));
+    const hits = vectorSearch(this.state.memories, texte, maxRecalls);
     let memories = this.state.memories;
+    
+    // Ajouter les souvenirs rappelés au focus attentionnel
+    let attentionState = this.state.attention;
     hits.forEach((h) => {
       memories = memories.map((s) =>
         s.id === h.s.id ? { ...s, foisRappele: s.foisRappele + 1, intensiteInitiale: clamp01(s.intensiteInitiale + 0.04) } : s
       );
+      const relevance = h.score * (1 + Math.abs(emo.valence) * 0.3);
+      const addResult = addToFocus(attentionState, h.s, relevance, now);
+      attentionState = addResult.state;
       this.log("RENFORCEMENT", "memory/vector_memory", `rappel (sim ${h.score.toFixed(2)}${h.s.statut === "non_resolu" ? " · À VIF" : ""}) : « ${trunc(h.s.texte, 44)} » — reconsolidation +0,04`);
     });
+    this.state.attention = attentionState;
 
     // 3) state/hormonal_state : le pic émotionnel devient pic hormonal
     this.flash("state/hormonal_state");
@@ -457,11 +485,48 @@ class MemorySystem {
     this.state.llmMode = mode;
     this.state.sizeBytes = totalSizeBytes(memories, nodes, edges, this.state.events.length);
     this.state.typing = false;
+    
+    // Mettre à jour la confiance (trust) basée sur la qualité perçue de l'interaction
+    const interactionQuality = emo.valence * 0.3 + (1 - Math.abs(emo.valence)) * 0.4;
+    this.state.theoryOfMind = updateTrust(this.state.theoryOfMind, interactionQuality, now);
+    
+    // Extraction sémantique : vérifier si des patterns répétitifs émergent
+    if (hits.length >= 2) {
+      const similarTexts = hits.map(h => h.s.texte);
+      const semanticResult = extractSemanticFromEpisodic(this.state.semantic, memories.filter(m => m.foisRappele > 1), similarTexts);
+      if (semanticResult.extracted) {
+        this.state.semantic = semanticResult.network;
+        this.log("SEMANTIC", "semantic", `fait sémantique extrait : « ${trunc(semanticResult.extracted.content, 50)} » (${semanticResult.reason})`);
+      }
+    }
+    
+    // Renforcement des habitudes basé sur le contexte et la récompense
+    const context = extractContext(texte, emo.traits_actives);
+    const rewardSignal = emo.valence * 0.5 + (hits.length > 0 ? 0.2 : 0);
+    const habitResult = reinforceHabit(this.state.habits, context, `répondre à "${texte.slice(0, 20)}..."`, rewardSignal, now);
+    if (habitResult.habit) {
+      this.state.habits = habitResult.state;
+      if (habitResult.created) {
+        this.log("HABIT", "habits", `nouvelle habitude : « ${habitResult.habit.label} » (force: ${habitResult.habit.strength.toFixed(2)})`);
+      }
+    }
+    
     this.state.chat = [
       ...this.state.chat,
       { id: uid(), role: "assistant", texte: answer, t: Date.now(), emotion: emo, rappels: hits.length, ton, flashback: !!flash },
     ];
     this.commit();
+    
+    // Générer des pensées spontanées après la réponse
+    setTimeout(() => {
+      const spontResult = generateSpontaneousThoughts(this.state, Date.now());
+      if (spontResult.newThoughts.length > 0) {
+        this.state = spontResult.state;
+        spontResult.newThoughts.forEach(t => {
+          this.log("SPONT", "spontaneous", `pensée générée: [${t.type}] "${t.content.slice(0, 40)}..." (urgence: ${t.urgency.toFixed(2)})`);
+        });
+      }
+    }, 1000);
   }
 
   private localAnswer(

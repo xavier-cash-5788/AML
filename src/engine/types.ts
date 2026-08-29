@@ -75,7 +75,8 @@ export type EventType =
   | "HORM"
   | "FLASH"
   | "RECONSO"
-  | "REGIME";
+  | "REGIME"
+  | "SPONT";
 
 export interface MemEvent {
   id: number;
@@ -103,6 +104,7 @@ export interface ChatMessage {
   rappels?: number;
   ton?: string; // ton hormonal observé dans la réponse
   flashback?: boolean; // une trace non résolue a resurgi intacte
+  spontaneous?: boolean; // message généré spontanément par l'IA
 }
 
 export interface TickSummary {
@@ -136,6 +138,15 @@ export interface RegulationState {
   regime: Regime;
 }
 
+// Import des nouveaux états de modules
+import type { SleepState } from "./sleep";
+import type { AttentionState } from "./attention";
+import type { PredictionState } from "./prediction";
+import type { HabitsState } from "./habits";
+import type { SemanticNetwork } from "./semantic";
+import type { UserMentalState } from "./theory_of_mind";
+import type { SpontaneityState } from "./spontaneous";
+
 export interface SysState {
   now: number;
   config: Config;
@@ -157,10 +168,12 @@ export interface SysState {
   hormonesHistory: HormonesHistoryPoint[];
   regulation: RegulationState;
   recentValences: { v: number; t: number }[];
-  // Nouveaux modules (v5)
-  sleep: import("./sleep").SleepState;
-  attention: import("./attention").AttentionState;
-  prediction: import("./prediction").PredictionState;
-  habits: import("./habits").HabitsState;
-  semantic: import("./semantic").SemanticNetwork;
+  // Nouveaux modules (v5+)
+  sleep: SleepState;
+  attention: AttentionState;
+  prediction: PredictionState;
+  habits: HabitsState;
+  semantic: SemanticNetwork;
+  theoryOfMind: UserMentalState;
+  spontaneity: SpontaneityState;
 }
