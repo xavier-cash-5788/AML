@@ -105,6 +105,11 @@ export function buildSystemPrompt(
   lines.push(`• Paramètres vitaux : λ_nég ${cfg.memory.decay_lambda_negatif} · λ_neu ${cfg.memory.decay_lambda_neutre} · λ_pos ${cfg.memory.decay_lambda_positif} · seuil d'oubli ${cfg.memory.seuil_oubli} · plafond ${cfg.memory.max_size_mb} Mo (usage ${tailleFmt}) · tic toutes les ${cfg.memory.tic_interval_seconds} s`);
   lines.push("");
   lines.push("Directives : réponds en français, 2–3 phrases. Laisse tes traits dominants et ton état hormonal teinter ta réponse comme une consigne de ton — sans jamais énumérer tes hormones, sauf si on te le demande explicitement. Cite un souvenir rappelé si pertinent.");
+  lines.push("");
+  lines.push("[RÈGLE STRICTE DES SOUVENIRS]");
+  lines.push("1. Tu ne dois citer un souvenir QUE s'il est explicitement présent dans la section [SOUVENIRS RAPPELÉS] ci-dessus.");
+  lines.push("2. Il est STRICTEMENT INTERDIT d'inventer, d'imaginer ou d'illustrer ton propos avec de faux souvenirs passés (ex: \"Je me rappelle avoir aidé un utilisateur...\", \"Une fois tu m'as parlé de...\").");
+  lines.push("3. Si aucun souvenir pertinent n'est présent dans le contexte, parle uniquement de manière théorique sans faire référence à un passé fictif.");
   return lines.join("\n");
 }
 

@@ -182,7 +182,66 @@ class MemorySystem {
   private pulse() {
     const now = Date.now();
     this.state.now = now;
-    if (now >= this.state.nextTickAt) this.runTick(now);
+    
+    // Mise à jour du cycle de sommeil (tick rapide pour animation UI)
+    this.state.sleep = sleepUpdate(this.state.sleep, now);
+    
+    // Vérifier si un tic complet doit être exécuté
+    if (now >= this.state.nextTickAt) {
+      this.runTick(now);
+    }
+    
+    // Génération de pensées spontanées si conditions favorables
+    const spontThoughts = generateSpontaneousThoughts(
+      this.state.spontaneity,
+      this.state.theoryOfMind,
+      this.state.habits,
+      this.state.semantic,
+      this.state.memories,
+      this.state.nodes,
+      now
+    );
+    
+    // Si une pensée spontanée est prête à être exprimée
+    const nextThought = selectNextSpontaneousThought(spontThoughts, now);
+    if (nextThought && !this.state.typing) {
+      // Marquer la pensée comme exprimée
+      this.state.spontaneity = markThoughtExpressed(this.state.spontaneity, nextThought.id, now);
+      
+      // Créer un message spontané basé sur le type de pensée
+      let spontaneousMsg: string;
+      switch (nextThought.type) {
+        case 'clarification':
+          spontaneousMsg = `Je me demande... ${nextThought.content}`;
+          break;
+        case 'followup':
+          spontaneousMsg = `À propos de ce que tu as dit : ${nextThought.content}`;
+          break;
+        case 'reflection':
+          spontaneousMsg = `Je réfléchissais à ceci : ${nextThought.content}`;
+          break;
+        case 'semantic_link':
+          spontaneousMsg = `Cela me fait penser à un lien intéressant : ${nextThought.content}`;
+          break;
+        case 'empathy':
+          spontaneousMsg = `${nextThought.content}`;
+          break;
+        default:
+          spontaneousMsg = nextThought.content;
+      }
+      
+      // Ajouter le message spontané au chat
+      this.state.chat = [...this.state.chat, {
+        id: uid(),
+        role: "assistant",
+        texte: spontaneousMsg,
+        t: now,
+        spontaneous: true
+      }];
+      
+      this.log("SPONT", "spontaneous", `pensée spontanée exprimée : ${nextThought.type} — ${trunc(nextThought.content, 50)}`);
+    }
+    
     this.commit();
   }
 
@@ -195,6 +254,23 @@ class MemorySystem {
   private runTick(now: number) {
     const cfg = this.state.config;
     this.flash("memory/memory_scheduler");
+    
+    // 0) Mise à jour du sommeil et calcul des paramètres effectifs
+    const sleepBefore = this.state.sleep;
+    const sleep = sleepUpdate(sleepBefore, now);
+    if (sleep.phase !== sleepBefore.phase) {
+      this.log("SLEEP", "sleep", `changement de phase : ${sleepBefore.phase} → ${sleep.phase} — ${sleepSummary(sleep)}`);
+    }
+    this.state.sleep = sleep;
+    
+    // Appliquer les modificateurs du sommeil au seuil de promotion et aux lambdas de decay
+    const effectivePromotionThresholdValue = effectivePromotionThreshold(cfg.memory.seuil_promotion_graphe, sleep.consolidationMultiplier);
+    const effectiveDecayLambdas = {
+      negatif: effectiveDecayLambda(cfg.memory.decay_lambda_negatif, sleep.decaySlowdown),
+      neutre: effectiveDecayLambda(cfg.memory.decay_lambda_neutre, sleep.decaySlowdown),
+      positif: effectiveDecayLambda(cfg.memory.decay_lambda_positif, sleep.decaySlowdown),
+    };
+    
     let memories = [...this.state.memories];
     const promus: string[] = [];
     const oublies: string[] = [];
@@ -211,9 +287,9 @@ class MemorySystem {
     for (const s of memories) {
       const f = forceOf(s, now, cfg);
       // Utiliser les lambdas effectifs du sommeil pour le decay
-      const effectiveLambda = s.valence === "negatif" ? effectiveDecayLambdas.negatif : s.valence === "positif" ? effectiveDecayLambdas.positif : effectiveDecayLambdas.neutre;
       const dtMin = Math.max(0, (now - s.creeLe) / 60000);
-      const fAdjusted = s.statut === "non_resolu" ? s.intensiteInitiale : clamp01(s.intensiteInitiale * Math.exp(-effectiveLambda * dtMin));
+      const effLambda = s.valence === "negatif" ? effectiveDecayLambdas.negatif : s.valence === "positif" ? effectiveDecayLambdas.positif : effectiveDecayLambdas.neutre;
+      const fAdjusted = s.statut === "non_resolu" ? s.intensiteInitiale : clamp01(s.intensiteInitiale * Math.exp(-effLambda * dtMin));
       
       if (s.statut === "contextualise" && fAdjusted < cfg.memory.seuil_oubli && s.creeLe < now - 20000) {
         oublies.push(s.texte);
@@ -265,22 +341,6 @@ class MemorySystem {
     const regBefore = this.state.regulation;
     const reg = regulationTick(regBefore, valMoy, nonResolus);
 
-    // 4b) sleep/ : cycle circadien veille/sommeil
-    this.flash("sleep");
-    const sleepBefore = this.state.sleep;
-    const sleep = sleepUpdate(sleepBefore, now);
-    if (sleep.phase !== sleepBefore.phase) {
-      this.log("SLEEP", "sleep", `changement de phase : ${sleepBefore.phase} → ${sleep.phase} — ${sleepSummary(sleep)}`);
-    }
-    
-    // Appliquer les modificateurs du sommeil au seuil de promotion et aux lambdas de decay
-    const effectivePromotionThresholdValue = effectivePromotionThreshold(cfg.memory.seuil_promotion_graphe, sleep.consolidationMultiplier);
-    const effectiveDecayLambdas = {
-      negatif: effectiveDecayLambda(cfg.memory.decay_lambda_negatif, sleep.decaySlowdown),
-      neutre: effectiveDecayLambda(cfg.memory.decay_lambda_neutre, sleep.decaySlowdown),
-      positif: effectiveDecayLambda(cfg.memory.decay_lambda_positif, sleep.decaySlowdown),
-    };
-
     // reconsolidation « thérapeutique » : le préfrontal restauré re-contextualise
     if (reconsolidable(reg, valMoy) && nonResolus > 0) {
       const cible = oldestUnresolved(memories);
@@ -316,7 +376,7 @@ class MemorySystem {
     this.state.nodes = nodes;
     this.state.hormones = horm;
     this.state.regulation = reg;
-    this.state.sleep = sleep;
+    // sleep déjà mis à jour en début de runTick
     this.state.sizeBytes = taille;
     this.state.nextTickAt = now + cfg.memory.tic_interval_seconds * 1000;
     this.pushHormonesHistory(now, horm);
@@ -332,7 +392,7 @@ class MemorySystem {
     this.log(
       "TIC",
       "memory/memory_scheduler",
-      `tic n°${this.state.tickCount} — decay recalculé sur ${this.state.lastTick.decayes} souvenir(s), ${promus.length} promotion(s), ${oublies.length + dropped.length} oubli(s), hormones en redescente, ${sleepSummary(sleep)}, ${attentionSummary(attentionAfter)}, ${habitsSummary(habitsAfter)}`
+      `tic n°${this.state.tickCount} — decay recalculé sur ${this.state.lastTick.decayes} souvenir(s), ${promus.length} promotion(s), ${oublies.length + dropped.length} oubli(s), hormones en redescente, ${sleepSummary(this.state.sleep)}, ${attentionSummary(attentionAfter)}, ${habitsSummary(habitsAfter)}`
     );
     this.log("DECAY", "memory/decay_engine", `λ appliqué : nég ${cfg.memory.decay_lambda_negatif} · neu ${cfg.memory.decay_lambda_neutre} · pos ${cfg.memory.decay_lambda_positif} (modulé par sommeil: ×${sleep.decaySlowdown.toFixed(2)}) — les traces à vif échappent au decay`);
   }
