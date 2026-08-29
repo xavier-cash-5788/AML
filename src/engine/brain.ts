@@ -158,6 +158,23 @@ export async function testOllama(endpoint: string): Promise<{ ok: boolean; detai
   }
 }
 
+/** Récupère la liste des modèles disponibles sur Ollama */
+export async function fetchOllamaModels(endpoint: string): Promise<string[]> {
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), 3000);
+  try {
+    const res = await fetch(`${endpoint.replace(/\/$/, "")}/api/tags`, { signal: ctrl.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const models = Array.isArray(data?.models) ? data.models : [];
+    return models.map((m: any) => m.name || m.model).filter(Boolean);
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(to);
+  }
+}
+
 // ── moteur simulé : générateur contextuel français ──────────────────────────
 const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
 

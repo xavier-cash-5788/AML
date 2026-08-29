@@ -668,15 +668,19 @@ class MemorySystem {
     this.commit();
   }
 
-  setConfig(patch: Partial<Config["memory"]> | { llm: Partial<Config["llm"]> }) {
+  setConfig(patch: Partial<Config["memory"]> | { llm: Partial<Config["llm"]> } | { guardrail: Partial<NonNullable<Config["guardrail"]>> }) {
     if ("llm" in patch) {
       this.state.config = { ...this.state.config, llm: { ...this.state.config.llm, ...patch.llm } };
+    } else if ("guardrail" in patch) {
+      const currentGuardrail = this.state.config.guardrail || DEFAULT_CONFIG.guardrail!;
+      this.state.config = { ...this.state.config, guardrail: { ...currentGuardrail, ...patch.guardrail } };
     } else {
       this.state.config = { ...this.state.config, memory: { ...this.state.config.memory, ...patch } };
     }
     if (Date.now() - this.lastConfigLog > 1400) {
       this.lastConfigLog = Date.now();
-      this.log("CONFIG", "config.json", `paramètres mis à jour : ${Object.keys("llm" in patch ? patch.llm : patch).join(", ")}`);
+      const keys = "llm" in patch ? Object.keys(patch.llm!) : "guardrail" in patch ? Object.keys(patch.guardrail!) : Object.keys(patch);
+      this.log("CONFIG", "config.json", `paramètres mis à jour : ${keys.join(", ")}`);
     }
     this.commit();
   }
