@@ -9,7 +9,7 @@ import LogPanel from "./components/LogPanel";
 import ConfigPanel from "./components/ConfigPanel";
 import TestsPanel from "./components/TestsPanel";
 import DebugPanel from "./components/DebugPanel";
-import { BrainView } from "./components/BrainView";
+import BrainView from "./components/BrainView";
 import { Corners } from "./components/ui";
 
 type Tab = "apercu" | "vecteurs" | "graphe" | "cerveau" | "journal" | "config" | "tests" | "debug";
