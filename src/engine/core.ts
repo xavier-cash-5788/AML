@@ -13,6 +13,12 @@ export const DEFAULT_CONFIG: Config = {
     seuil_oubli: 0.05,
     max_variation_par_interaction: 0.1,
   },
+  guardrail: {
+    enabled: false,
+    provider: "simule",
+    timeoutMs: 3000,
+    maxLatencyAcceptable: 1500,
+  },
 };
 
 export const EMBED_DIM = 96;

@@ -8,9 +8,11 @@ import GraphPanel from "./components/GraphPanel";
 import LogPanel from "./components/LogPanel";
 import ConfigPanel from "./components/ConfigPanel";
 import TestsPanel from "./components/TestsPanel";
+import DebugPanel from "./components/DebugPanel";
+import BrainView from "./components/BrainView";
 import { Corners } from "./components/ui";
 
-type Tab = "apercu" | "vecteurs" | "graphe" | "journal" | "config" | "tests";
+type Tab = "apercu" | "vecteurs" | "graphe" | "cerveau" | "journal" | "config" | "tests" | "debug";
 
 const MODULES = [
   "core/llm_interface.py",
@@ -28,9 +30,11 @@ const TABS: { id: Tab; label: string; file: string }[] = [
   { id: "apercu", label: "Aperçu", file: "GET /memory/status" },
   { id: "vecteurs", label: "Vecteurs", file: "vector_db/" },
   { id: "graphe", label: "Graphe", file: "graph.json" },
+  { id: "cerveau", label: "Cerveau", file: "brainZones.ts" },
   { id: "journal", label: "Journal", file: "memory_events.jsonl" },
   { id: "config", label: "Config", file: "config.json" },
   { id: "tests", label: "Tests", file: "tests/" },
+  { id: "debug", label: "Debug", file: "debugSuite.ts" },
 ];
 
 function Logo() {
@@ -133,9 +137,11 @@ export default function App() {
               {tab === "apercu" && <StatusPanel delay={0} />}
               {tab === "vecteurs" && <div className="xl:h-full min-h-[480px] xl:min-h-0"><VectorPanel delay={0} /></div>}
               {tab === "graphe" && <GraphPanel delay={0} />}
+              {tab === "cerveau" && <BrainView />}
               {tab === "journal" && <div className="xl:h-full min-h-[480px] xl:min-h-0"><LogPanel delay={0} /></div>}
               {tab === "config" && <ConfigPanel delay={0} />}
               {tab === "tests" && <TestsPanel delay={0} />}
+              {tab === "debug" && <DebugPanel delay={0} />}
             </div>
           </div>
         </div>

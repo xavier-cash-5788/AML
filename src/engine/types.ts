@@ -19,6 +19,14 @@ export interface Config {
     seuil_oubli: number;
     max_variation_par_interaction: number;
   };
+  guardrail?: {
+    enabled: boolean;
+    provider: "simule" | "ollama" | "none";
+    model?: string;
+    endpoint?: string;
+    timeoutMs?: number;
+    maxLatencyAcceptable?: number;
+  };
 }
 
 /** Un souvenir du stockage vectoriel (équivalent ChromaDB) */
@@ -75,7 +83,9 @@ export type EventType =
   | "HORM"
   | "FLASH"
   | "RECONSO"
-  | "REGIME";
+  | "REGIME"
+  | "SPONT"
+  | "GUARD";
 
 export interface MemEvent {
   id: number;
@@ -103,6 +113,7 @@ export interface ChatMessage {
   rappels?: number;
   ton?: string; // ton hormonal observé dans la réponse
   flashback?: boolean; // une trace non résolue a resurgi intacte
+  spontaneous?: boolean; // message généré spontanément par l'IA
 }
 
 export interface TickSummary {
@@ -136,6 +147,39 @@ export interface RegulationState {
   regime: Regime;
 }
 
+// Import des nouveaux états de modules
+import type { SleepState } from "./sleep";
+import type { AttentionState } from "./attention";
+import type { PredictionState } from "./prediction";
+import type { HabitsState } from "./habits";
+import type { SemanticNetwork } from "./semantic";
+import type { UserMentalState } from "./theory_of_mind";
+import type { SpontaneityState } from "./spontaneous";
+import type { RLState } from "./cognitive_rl";
+
+// État pour le moteur RPE et le Gating Préfrontal
+export interface RPEState {
+  predictedValence: number; // Valence attendue avant réponse
+  lastRPE: number; // Dernière erreur de prédiction calculée
+  learningMultiplier: number; // Multiplicateur d'apprentissage actuel
+  inhibitionActive: boolean; // Si le PFC inhibe certaines réponses
+  forcedConstraints: string[]; // Contraintes actives à injecter dans le prompt
+}
+
+// ── brain/ : visualisation des zones cérébrales ────────────────────────────────
+export interface BrainZoneState {
+  intensity: number; // 0..1
+  lastActive: number; // timestamp
+}
+
+export interface BrainZonesState {
+  prefrontal: BrainZoneState;
+  hippocampus: BrainZoneState;
+  amygdala: BrainZoneState;
+  striatum: BrainZoneState;
+  temporal: BrainZoneState;
+}
+
 export interface SysState {
   now: number;
   config: Config;
@@ -157,4 +201,15 @@ export interface SysState {
   hormonesHistory: HormonesHistoryPoint[];
   regulation: RegulationState;
   recentValences: { v: number; t: number }[];
+  // Nouveaux modules (v5+)
+  sleep: SleepState;
+  attention: AttentionState;
+  prediction: PredictionState;
+  habits: HabitsState;
+  semantic: SemanticNetwork;
+  theoryOfMind: UserMentalState;
+  spontaneity: SpontaneityState;
+  brainZones: BrainZonesState;
+  rl: RLState; // Apprentissage par renforcement cognitif
+  rpe: RPEState; // Moteur d'erreur de prédiction et gating préfrontal
 }

@@ -13,6 +13,17 @@ import {
   amygdalaDetect, computeRegime, hippocampusContextualiser, oldestUnresolved,
   prefrontalForce, reconsolidable, regulationInit, regulationTick,
 } from "./regulation";
+import { sleepInit, sleepUpdate, isSleeping, sleepSummary, effectivePromotionThreshold, effectiveDecayLambda } from "./sleep";
+import { attentionInit, attentionDecay, attentionSummary, addToFocus, autoAdjustFocusMode, cognitiveLoad } from "./attention";
+import { predictionInit, makePrediction, computePredictionError, dopamineSignalFromError, isSignificantSurprise, predictionSummary } from "./prediction";
+import { habitsInit, habitsDecay, habitsSummary, extractContext, reinforceHabit } from "./habits";
+import { semanticInit, semanticDecay, semanticSummary, extractSemanticFromEpisodic } from "./semantic";
+import { theoryOfMindInit, theoryOfMindDecay, theoryOfMindSummary, inferIntentions, inferBeliefs, updateEmotionalState, updateTrust, updateEngagement } from "./theory_of_mind";
+import { spontaneityInit, generateSpontaneousThoughts, selectNextSpontaneousThought, markThoughtExpressed, cleanupThoughts, adjustInhibition, spontaneitySummary } from "./spontaneous";
+import { validateResponse, validationSummary, type ValidationConfig } from "./guardrail";
+import { cognitiveRL, type RLState } from "./cognitive_rl";
+import { rpeEngine, type RPEState } from "./rpe_engine";
+import { prefrontalCortex } from "./prefrontal_gating";
 
 const LS_KEY = "mnemosyne.state.v1";
 const MAX_EVENTS = 260;
@@ -59,6 +70,28 @@ function freshState(): SysState {
     hormonesHistory: [],
     regulation: regulationInit(),
     recentValences: [],
+    sleep: sleepInit(),
+    attention: attentionInit(),
+    prediction: predictionInit(),
+    habits: habitsInit(),
+    semantic: semanticInit(),
+    theoryOfMind: theoryOfMindInit(),
+    spontaneity: spontaneityInit(),
+    brainZones: {
+      prefrontal: { intensity: 0, lastActive: now },
+      hippocampus: { intensity: 0, lastActive: now },
+      amygdala: { intensity: 0, lastActive: now },
+      striatum: { intensity: 0, lastActive: now },
+      temporal: { intensity: 0, lastActive: now },
+    },
+    rl: cognitiveRL.getState(),
+    rpe: {
+      predictedValence: 0,
+      lastRPE: 0,
+      learningMultiplier: 1,
+      inhibitionActive: false,
+      forcedConstraints: []
+    }
   };
 }
 
@@ -87,6 +120,16 @@ class MemorySystem {
         hormonesHistory: persisted.hormonesHistory ?? [],
         regulation: persisted.regulation ?? base.regulation,
         recentValences: persisted.recentValences ?? [],
+        sleep: persisted.sleep ?? base.sleep,
+        attention: persisted.attention ?? base.attention,
+        prediction: persisted.prediction ?? base.prediction,
+        habits: persisted.habits ?? base.habits,
+        semantic: persisted.semantic ?? base.semantic,
+        theoryOfMind: persisted.theoryOfMind ?? base.theoryOfMind,
+        spontaneity: persisted.spontaneity ?? base.spontaneity,
+        brainZones: persisted.brainZones ?? base.brainZones,
+        rl: persisted.rl ?? base.rl,
+        rpe: persisted.rpe ?? base.rpe
       } as SysState;
       this.log("SEED", "memory/memory_scheduler", "Session restaurée depuis storage/ (localStorage)");
     } else {
@@ -120,7 +163,7 @@ class MemorySystem {
 
   private persist() {
     try {
-      const { config, memories, nodes, edges, events, chat, tickCount, totalForgotten, lastTick, hormones, hormonesHistory, regulation, recentValences } = this.state;
+      const { config, memories, nodes, edges, events, chat, tickCount, totalForgotten, lastTick, hormones, hormonesHistory, regulation, recentValences, sleep, attention, prediction, habits, semantic, theoryOfMind, spontaneity } = this.state;
       localStorage.setItem(
         LS_KEY,
         JSON.stringify({
@@ -129,6 +172,7 @@ class MemorySystem {
           chat: chat.slice(-80),
           tickCount, totalForgotten, lastTick,
           hormones, hormonesHistory: hormonesHistory.slice(-120), regulation, recentValences,
+          sleep, attention, prediction, habits, semantic, theoryOfMind, spontaneity,
         })
       );
     } catch {
@@ -160,7 +204,66 @@ class MemorySystem {
   private pulse() {
     const now = Date.now();
     this.state.now = now;
-    if (now >= this.state.nextTickAt) this.runTick(now);
+    
+    // Mise à jour du cycle de sommeil (tick rapide pour animation UI)
+    this.state.sleep = sleepUpdate(this.state.sleep, now);
+    
+    // Vérifier si un tic complet doit être exécuté
+    if (now >= this.state.nextTickAt) {
+      this.runTick(now);
+    }
+    
+    // Génération de pensées spontanées si conditions favorables
+    const spontThoughts = generateSpontaneousThoughts(
+      this.state.spontaneity,
+      this.state.theoryOfMind,
+      this.state.habits,
+      this.state.semantic,
+      this.state.memories,
+      this.state.nodes,
+      now
+    );
+    
+    // Si une pensée spontanée est prête à être exprimée
+    const nextThought = selectNextSpontaneousThought(spontThoughts, now);
+    if (nextThought && !this.state.typing) {
+      // Marquer la pensée comme exprimée
+      this.state.spontaneity = markThoughtExpressed(this.state.spontaneity, nextThought.id, now);
+      
+      // Créer un message spontané basé sur le type de pensée
+      let spontaneousMsg: string;
+      switch (nextThought.type) {
+        case 'clarification':
+          spontaneousMsg = `Je me demande... ${nextThought.content}`;
+          break;
+        case 'followup':
+          spontaneousMsg = `À propos de ce que tu as dit : ${nextThought.content}`;
+          break;
+        case 'reflection':
+          spontaneousMsg = `Je réfléchissais à ceci : ${nextThought.content}`;
+          break;
+        case 'semantic_link':
+          spontaneousMsg = `Cela me fait penser à un lien intéressant : ${nextThought.content}`;
+          break;
+        case 'empathy':
+          spontaneousMsg = `${nextThought.content}`;
+          break;
+        default:
+          spontaneousMsg = nextThought.content;
+      }
+      
+      // Ajouter le message spontané au chat
+      this.state.chat = [...this.state.chat, {
+        id: uid(),
+        role: "assistant",
+        texte: spontaneousMsg,
+        t: now,
+        spontaneous: true
+      }];
+      
+      this.log("SPONT", "spontaneous", `pensée spontanée exprimée : ${nextThought.type} — ${trunc(nextThought.content, 50)}`);
+    }
+    
     this.commit();
   }
 
@@ -173,28 +276,56 @@ class MemorySystem {
   private runTick(now: number) {
     const cfg = this.state.config;
     this.flash("memory/memory_scheduler");
+    
+    // 0) Mise à jour du sommeil et calcul des paramètres effectifs
+    const sleepBefore = this.state.sleep;
+    const sleep = sleepUpdate(sleepBefore, now);
+    if (sleep.phase !== sleepBefore.phase) {
+      this.log("SLEEP", "sleep", `changement de phase : ${sleepBefore.phase} → ${sleep.phase} — ${sleepSummary(sleep)}`);
+    }
+    this.state.sleep = sleep;
+    
+    // Appliquer les modificateurs du sommeil au seuil de promotion et aux lambdas de decay
+    const effectivePromotionThresholdValue = effectivePromotionThreshold(cfg.memory.seuil_promotion_graphe, sleep.consolidationMultiplier);
+    const effectiveDecayLambdas = {
+      negatif: effectiveDecayLambda(cfg.memory.decay_lambda_negatif, sleep.decaySlowdown),
+      neutre: effectiveDecayLambda(cfg.memory.decay_lambda_neutre, sleep.decaySlowdown),
+      positif: effectiveDecayLambda(cfg.memory.decay_lambda_positif, sleep.decaySlowdown),
+    };
+    
     let memories = [...this.state.memories];
     const promus: string[] = [];
     const oublies: string[] = [];
     let nodes = [...this.state.nodes];
 
+    // Decay Theory of Mind
+    this.state.theoryOfMind = theoryOfMindDecay(this.state.theoryOfMind, now);
+    
+    // Cleanup des pensées spontanées anciennes
+    this.state.spontaneity = cleanupThoughts(this.state.spontaneity);
+
     // 1) decay + promotion + oubli actif (les traces « à vif » échappent au decay)
     const kept: Souvenir[] = [];
     for (const s of memories) {
       const f = forceOf(s, now, cfg);
-      if (s.statut === "contextualise" && f < cfg.memory.seuil_oubli && s.creeLe < now - 20000) {
+      // Utiliser les lambdas effectifs du sommeil pour le decay
+      const dtMin = Math.max(0, (now - s.creeLe) / 60000);
+      const effLambda = s.valence === "negatif" ? effectiveDecayLambdas.negatif : s.valence === "positif" ? effectiveDecayLambdas.positif : effectiveDecayLambdas.neutre;
+      const fAdjusted = s.statut === "non_resolu" ? s.intensiteInitiale : clamp01(s.intensiteInitiale * Math.exp(-effLambda * dtMin));
+      
+      if (s.statut === "contextualise" && fAdjusted < cfg.memory.seuil_oubli && s.creeLe < now - 20000) {
         oublies.push(s.texte);
-        this.log("OUBLI", "memory/decay_engine", `oubli actif : « ${trunc(s.texte, 52)} » (force ${f.toFixed(3)} < ${cfg.memory.seuil_oubli})`);
+        this.log("OUBLI", "memory/decay_engine", `oubli actif : « ${trunc(s.texte, 52)} » (force ${fAdjusted.toFixed(3)} < ${cfg.memory.seuil_oubli})`);
         continue;
       }
       let cur = s;
-      if (!s.promu && s.statut === "contextualise" && promotionScore(s, now, cfg) >= cfg.memory.seuil_promotion_graphe) {
-        cur = { ...cur, promu: true, intensiteInitiale: clamp01(Math.max(cur.intensiteInitiale, f + 0.1)) };
+      if (!s.promu && s.statut === "contextualise" && promotionScore(s, now, cfg) >= effectivePromotionThresholdValue) {
+        cur = { ...cur, promu: true, intensiteInitiale: clamp01(Math.max(cur.intensiteInitiale, fAdjusted + 0.1)) };
         for (const tid of cur.traits) {
           nodes = graphReinforce(nodes, tid, cfg.memory.max_variation_par_interaction, cfg.memory.max_variation_par_interaction, now);
         }
         promus.push(s.texte);
-        this.log("PROMOTION", "memory/decay_engine", `promotion vecteur → graphe : « ${trunc(s.texte, 52)} »`);
+        this.log("PROMOTION", "memory/decay_engine", `promotion vecteur → graphe : « ${trunc(s.texte, 52)} » (seuil sommeil-adjusté: ${effectivePromotionThresholdValue.toFixed(2)})`);
         this.log("CONSOLIDATION", "memory/graph_memory", `traits renforcés : ${cur.traits.length ? cur.traits.join(", ") : "aucun"} (+${cfg.memory.max_variation_par_interaction} max)`);
       }
       kept.push(cur);
@@ -267,15 +398,25 @@ class MemorySystem {
     this.state.nodes = nodes;
     this.state.hormones = horm;
     this.state.regulation = reg;
+    // sleep déjà mis à jour en début de runTick
     this.state.sizeBytes = taille;
     this.state.nextTickAt = now + cfg.memory.tic_interval_seconds * 1000;
     this.pushHormonesHistory(now, horm);
+    
+    // Appliquer decay attention et habits au tick
+    const attentionAfter = attentionDecay(this.state.attention, now);
+    const habitsAfter = habitsDecay(this.state.habits, now);
+    const semanticAfter = semanticDecay(this.state.semantic);
+    this.state.attention = attentionAfter;
+    this.state.habits = habitsAfter;
+    this.state.semantic = semanticAfter;
+    
     this.log(
       "TIC",
       "memory/memory_scheduler",
-      `tic n°${this.state.tickCount} — decay recalculé sur ${this.state.lastTick.decayes} souvenir(s), ${promus.length} promotion(s), ${oublies.length + dropped.length} oubli(s), hormones en redescente, taille ${fmtBytes(taille)}`
+      `tic n°${this.state.tickCount} — decay recalculé sur ${this.state.lastTick.decayes} souvenir(s), ${promus.length} promotion(s), ${oublies.length + dropped.length} oubli(s), hormones en redescente, ${sleepSummary(this.state.sleep)}, ${attentionSummary(attentionAfter)}, ${habitsSummary(habitsAfter)}`
     );
-    this.log("DECAY", "memory/decay_engine", `λ appliqué : nég ${cfg.memory.decay_lambda_negatif} · neu ${cfg.memory.decay_lambda_neutre} · pos ${cfg.memory.decay_lambda_positif} (les traces à vif échappent au decay)`);
+    this.log("DECAY", "memory/decay_engine", `λ appliqué : nég ${cfg.memory.decay_lambda_negatif} · neu ${cfg.memory.decay_lambda_neutre} · pos ${cfg.memory.decay_lambda_positif} (modulé par sommeil: ×${sleep.decaySlowdown.toFixed(2)}) — les traces à vif échappent au decay`);
   }
 
   // ── api/server.py : POST /chat ────────────────────────────────────────────
@@ -296,15 +437,31 @@ class MemorySystem {
       `auto-évaluation : intensité ${emo.intensite.toFixed(2)} · valence ${emo.valence.toFixed(2)} (${emo.valenceCat}) · traits [${emo.traits_actives.join(", ") || "∅"}]`
     );
 
-    // 2) memory/vector_memory : rappel par similarité
-    const hits = vectorSearch(this.state.memories, texte, 3);
+    // Theory of Mind : mise à jour de l'état mental de l'utilisateur
+    let tomState = updateEmotionalState(this.state.theoryOfMind, emo.valence, emo.intensite, now);
+    tomState = inferIntentions(tomState, texte, emo.intensite, emo.valence, now).state;
+    tomState = inferBeliefs(tomState, texte, emo.valence, now).state;
+    tomState = updateEngagement(tomState, texte.length, (texte.match(/\?/g) || []).length);
+    this.state.theoryOfMind = tomState;
+    this.log("TOM", "theory_of_mind", `${theoryOfMindSummary(tomState)}`);
+
+    // 2) memory/vector_memory : rappel par similarité (limité par la capacité attentionnelle)
+    const maxRecalls = Math.max(2, Math.floor((1 - cognitiveLoad(this.state.attention)) * 5));
+    const hits = vectorSearch(this.state.memories, texte, maxRecalls);
     let memories = this.state.memories;
+    
+    // Ajouter les souvenirs rappelés au focus attentionnel
+    let attentionState = this.state.attention;
     hits.forEach((h) => {
       memories = memories.map((s) =>
         s.id === h.s.id ? { ...s, foisRappele: s.foisRappele + 1, intensiteInitiale: clamp01(s.intensiteInitiale + 0.04) } : s
       );
+      const relevance = h.score * (1 + Math.abs(emo.valence) * 0.3);
+      const addResult = addToFocus(attentionState, h.s, relevance, now);
+      attentionState = addResult.state;
       this.log("RENFORCEMENT", "memory/vector_memory", `rappel (sim ${h.score.toFixed(2)}${h.s.statut === "non_resolu" ? " · À VIF" : ""}) : « ${trunc(h.s.texte, 44)} » — reconsolidation +0,04`);
     });
+    this.state.attention = attentionState;
 
     // 3) state/hormonal_state : le pic émotionnel devient pic hormonal
     this.flash("state/hormonal_state");
@@ -378,6 +535,30 @@ class MemorySystem {
       this.log("LLM", "core/llm_interface", `moteur simulé : réponse contextuelle générée (ton « ${ton} »)`);
     }
 
+    // 6b) guardrail/validator — validation des citations de souvenirs (pipeline à 2 agents)
+    const guardrailConfig: ValidationConfig = cfg.guardrail || DEFAULT_CONFIG.guardrail!;
+    if (guardrailConfig.enabled) {
+      const validationStart = Date.now();
+      const result = await validateResponse(answer, memories, guardrailConfig);
+      const validationLatency = Date.now() - validationStart;
+      
+      if (!result.valid && result.invalidCitations.length > 0) {
+        this.log("GUARD", "guardrail/validator", `⚠️ citations invalides détectées : ${result.invalidCitations.map(c => `"${trunc(c, 30)}"`).join(", ")} — latence: ${validationLatency}ms`);
+        // Appliquer la correction si disponible
+        if (result.correctedText) {
+          answer = result.correctedText;
+          this.log("GUARD", "guardrail/validator", `texte corrigé : citations invalides remplacées`);
+        }
+      } else if (result.valid) {
+        this.log("GUARD", "guardrail/validator", `✓ validation passée — ${result.citedSouvenirs.length} citation(s) vérifiée(s), latence: ${validationLatency}ms`);
+      }
+      
+      // Vérifier si la latence dépasse le seuil acceptable
+      if (validationLatency > guardrailConfig.maxLatencyAcceptable!) {
+        this.log("GUARD", "guardrail/validator", `⚡ latence élevée : ${validationLatency}ms > ${guardrailConfig.maxLatencyAcceptable}ms (seuil)`);
+      }
+    }
+
     // 7) stockage vectoriel — avec le statut décidé par l'hippocampe
     this.flash("memory/vector_memory");
     memories = vectorAdd(memories, texte, emo.valenceCat, emo.valence, emo.traits_actives, emo.intensite * 0.9 + 0.1, statut);
@@ -410,11 +591,48 @@ class MemorySystem {
     this.state.llmMode = mode;
     this.state.sizeBytes = totalSizeBytes(memories, nodes, edges, this.state.events.length);
     this.state.typing = false;
+    
+    // Mettre à jour la confiance (trust) basée sur la qualité perçue de l'interaction
+    const interactionQuality = emo.valence * 0.3 + (1 - Math.abs(emo.valence)) * 0.4;
+    this.state.theoryOfMind = updateTrust(this.state.theoryOfMind, interactionQuality, now);
+    
+    // Extraction sémantique : vérifier si des patterns répétitifs émergent
+    if (hits.length >= 2) {
+      const similarTexts = hits.map(h => h.s.texte);
+      const semanticResult = extractSemanticFromEpisodic(this.state.semantic, memories.filter(m => m.foisRappele > 1), similarTexts);
+      if (semanticResult.extracted) {
+        this.state.semantic = semanticResult.network;
+        this.log("SEMANTIC", "semantic", `fait sémantique extrait : « ${trunc(semanticResult.extracted.content, 50)} » (${semanticResult.reason})`);
+      }
+    }
+    
+    // Renforcement des habitudes basé sur le contexte et la récompense
+    const context = extractContext(texte, emo.traits_actives);
+    const rewardSignal = emo.valence * 0.5 + (hits.length > 0 ? 0.2 : 0);
+    const habitResult = reinforceHabit(this.state.habits, context, `répondre à "${texte.slice(0, 20)}..."`, rewardSignal, now);
+    if (habitResult.habit) {
+      this.state.habits = habitResult.state;
+      if (habitResult.created) {
+        this.log("HABIT", "habits", `nouvelle habitude : « ${habitResult.habit.label} » (force: ${habitResult.habit.strength.toFixed(2)})`);
+      }
+    }
+    
     this.state.chat = [
       ...this.state.chat,
       { id: uid(), role: "assistant", texte: answer, t: Date.now(), emotion: emo, rappels: hits.length, ton, flashback: !!flash },
     ];
     this.commit();
+    
+    // Générer des pensées spontanées après la réponse
+    setTimeout(() => {
+      const spontResult = generateSpontaneousThoughts(this.state, Date.now());
+      if (spontResult.newThoughts.length > 0) {
+        this.state = spontResult.state;
+        spontResult.newThoughts.forEach(t => {
+          this.log("SPONT", "spontaneous", `pensée générée: [${t.type}] "${t.content.slice(0, 40)}..." (urgence: ${t.urgency.toFixed(2)})`);
+        });
+      }
+    }, 1000);
   }
 
   private localAnswer(
@@ -471,15 +689,19 @@ class MemorySystem {
     this.commit();
   }
 
-  setConfig(patch: Partial<Config["memory"]> | { llm: Partial<Config["llm"]> }) {
+  setConfig(patch: Partial<Config["memory"]> | { llm: Partial<Config["llm"]> } | { guardrail: Partial<NonNullable<Config["guardrail"]>> }) {
     if ("llm" in patch) {
       this.state.config = { ...this.state.config, llm: { ...this.state.config.llm, ...patch.llm } };
+    } else if ("guardrail" in patch) {
+      const currentGuardrail = this.state.config.guardrail || DEFAULT_CONFIG.guardrail!;
+      this.state.config = { ...this.state.config, guardrail: { ...currentGuardrail, ...patch.guardrail } };
     } else {
       this.state.config = { ...this.state.config, memory: { ...this.state.config.memory, ...patch } };
     }
     if (Date.now() - this.lastConfigLog > 1400) {
       this.lastConfigLog = Date.now();
-      this.log("CONFIG", "config.json", `paramètres mis à jour : ${Object.keys("llm" in patch ? patch.llm : patch).join(", ")}`);
+      const keys = "llm" in patch ? Object.keys(patch.llm!) : "guardrail" in patch ? Object.keys(patch.guardrail!) : Object.keys(patch);
+      this.log("CONFIG", "config.json", `paramètres mis à jour : ${keys.join(", ")}`);
     }
     this.commit();
   }

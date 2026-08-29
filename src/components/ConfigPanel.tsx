@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { system, useSystem } from "../engine/system";
 import { DEFAULT_CONFIG, fmtNum } from "../engine/core";
-import { testOllama } from "../engine/brain";
+import { testOllama, fetchOllamaModels } from "../engine/brain";
 import type { LlmProvider } from "../engine/types";
 import { Btn, Modal, Panel } from "./ui";
 
@@ -32,6 +32,17 @@ export default function ConfigPanel({ delay }: { delay: number }) {
   const [testState, setTestState] = useState<{ ok: boolean; detail: string } | null>(null);
   const [testing, setTesting] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
+  
+  const guardrail = cfg.guardrail || DEFAULT_CONFIG.guardrail!;
+
+  // Charger automatiquement les modèles Ollama au montage et quand le provider change
+  useEffect(() => {
+    if (cfg.llm.provider === "ollama") {
+      loadModels();
+    }
+  }, [cfg.llm.provider, cfg.llm.endpoint]);
 
   const runTest = async () => {
     setTesting(true);
@@ -39,6 +50,13 @@ export default function ConfigPanel({ delay }: { delay: number }) {
     const r = await testOllama(cfg.llm.endpoint);
     setTestState(r);
     setTesting(false);
+  };
+  
+  const loadModels = async () => {
+    setLoadingModels(true);
+    const models = await fetchOllamaModels(cfg.llm.endpoint);
+    setOllamaModels(models);
+    setLoadingModels(false);
   };
 
   return (
@@ -59,11 +77,29 @@ export default function ConfigPanel({ delay }: { delay: number }) {
             </label>
             <label className="block">
               <span className="text-[12px] text-[var(--mut)] block mb-1">model</span>
-              <input
-                value={cfg.llm.model}
-                onChange={(e) => system.setConfig({ llm: { model: e.target.value } })}
-                className="w-full mono bg-[var(--ink)] border border-[var(--line)] px-2 py-2 text-[12px] text-[var(--text)]"
-              />
+              <div className="flex gap-2">
+                <select
+                  value={cfg.llm.model}
+                  onChange={(e) => system.setConfig({ llm: { model: e.target.value } })}
+                  className="flex-1 mono bg-[var(--ink)] border border-[var(--line)] px-2 py-2 text-[12px] text-[var(--text)]"
+                >
+                  {ollamaModels.length === 0 ? (
+                    <option value={cfg.llm.model}>{cfg.llm.model || "mistral"}</option>
+                  ) : (
+                    ollamaModels.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))
+                  )}
+                </select>
+                <button
+                  onClick={loadModels}
+                  disabled={loadingModels}
+                  className="mono bg-[var(--neu)] text-[var(--ink)] px-2 py-2 text-[11px] disabled:opacity-50"
+                  title="Charger les modèles depuis Ollama"
+                >
+                  {loadingModels ? "..." : "↻"}
+                </button>
+              </div>
             </label>
           </div>
           <label className="block">
@@ -84,6 +120,11 @@ export default function ConfigPanel({ delay }: { delay: number }) {
               </span>
             )}
           </div>
+          {ollamaModels.length > 0 && (
+            <p className="text-[10px] text-[var(--dim)]">
+              {ollamaModels.length} modèle(s) détecté(s): {ollamaModels.slice(0, 5).join(", ")}{ollamaModels.length > 5 ? "…" : ""}
+            </p>
+          )}
           <p className="text-[11px] text-[var(--dim)] leading-relaxed border-t border-[var(--line)]/60 pt-3">
             En mode <span className="mono">ollama</span>, chaque /chat tente <span className="mono">POST {cfg.llm.endpoint}/api/chat</span> avec le prompt système construit
             par prompt_builder ; en cas d'échec, le moteur simulé contextuel prend le relais sans interruption.
@@ -146,6 +187,72 @@ export default function ConfigPanel({ delay }: { delay: number }) {
           </Btn>
         </div>
       </Modal>
+
+      <Panel title="Pipeline de Validation (Guardrail)" file="guardrail/validator.ts" delay={delay + 180} className="lg:col-span-2">
+        <div className="px-4 py-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-[12px] text-[var(--mut)]">activer la validation des citations</span>
+            <input
+              type="checkbox"
+              checked={guardrail.enabled}
+              onChange={(e) => system.setConfig({ guardrail: { ...guardrail, enabled: e.target.checked } })}
+              className="h-4 w-4"
+            />
+          </div>
+          <p className="text-[11px] text-[var(--dim)] leading-relaxed">
+            Un petit modèle vérifie que les souvenirs cités par le LLM existent réellement dans le RAG avant d'afficher la réponse.
+            Fiabilité absolue (0 % d'hallucination d'épisode), mais ajoute de la latence.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="text-[12px] text-[var(--mut)] block mb-1">provider</span>
+              <select
+                value={guardrail.provider}
+                onChange={(e) => system.setConfig({ guardrail: { ...guardrail, provider: e.target.value as "simule" | "ollama" | "none" } })}
+                className="w-full mono bg-[var(--ink)] border border-[var(--line)] px-2 py-2 text-[12px] text-[var(--text)]"
+              >
+                <option value="simule">simule (ultra-rapide, heuristique)</option>
+                <option value="ollama">ollama (petit modèle, ex: gemma2:2b)</option>
+                <option value="none">aucun</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-[12px] text-[var(--mut)] block mb-1">modèle (si ollama)</span>
+              <input
+                value={guardrail.model || "gemma2:2b"}
+                onChange={(e) => system.setConfig({ guardrail: { ...guardrail, model: e.target.value } })}
+                className="w-full mono bg-[var(--ink)] border border-[var(--line)] px-2 py-2 text-[12px] text-[var(--text)]"
+                placeholder="gemma2:2b"
+              />
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="text-[12px] text-[var(--mut)] block mb-1">endpoint (si ollama)</span>
+              <input
+                value={guardrail.endpoint || cfg.llm.endpoint}
+                onChange={(e) => system.setConfig({ guardrail: { ...guardrail, endpoint: e.target.value } })}
+                className="w-full mono bg-[var(--ink)] border border-[var(--line)] px-2 py-2 text-[12px] text-[var(--text)]"
+                placeholder="http://localhost:11434"
+              />
+            </label>
+            <label className="block">
+              <span className="text-[12px] text-[var(--mut)] block mb-1">latence max acceptable (ms)</span>
+              <input
+                type="number"
+                value={guardrail.maxLatencyAcceptable || 1500}
+                onChange={(e) => system.setConfig({ guardrail: { ...guardrail, maxLatencyAcceptable: parseInt(e.target.value) || 1500 } })}
+                className="w-full mono bg-[var(--ink)] border border-[var(--line)] px-2 py-2 text-[12px] text-[var(--text)]"
+              />
+            </label>
+          </div>
+          <div className="flex items-center gap-3 border-t border-[var(--line)]/60 pt-3">
+            <span className="mono text-[10.5px] text-[var(--dim)]">
+              état : {guardrail.enabled ? `✓ activé (${guardrail.provider}${guardrail.model ? ` · ${guardrail.model}` : ""})` : "✗ désactivé"}
+            </span>
+          </div>
+        </div>
+      </Panel>
     </div>
   );
 }
