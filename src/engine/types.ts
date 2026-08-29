@@ -156,6 +156,20 @@ import type { SemanticNetwork } from "./semantic";
 import type { UserMentalState } from "./theory_of_mind";
 import type { SpontaneityState } from "./spontaneous";
 
+// ── brain/ : visualisation des zones cérébrales ────────────────────────────────
+export interface BrainZoneState {
+  intensity: number; // 0..1
+  lastActive: number; // timestamp
+}
+
+export interface BrainZonesState {
+  prefrontal: BrainZoneState;
+  hippocampus: BrainZoneState;
+  amygdala: BrainZoneState;
+  striatum: BrainZoneState;
+  temporal: BrainZoneState;
+}
+
 export interface SysState {
   now: number;
   config: Config;
@@ -185,4 +199,5 @@ export interface SysState {
   semantic: SemanticNetwork;
   theoryOfMind: UserMentalState;
   spontaneity: SpontaneityState;
+  brainZones: BrainZonesState;
 }

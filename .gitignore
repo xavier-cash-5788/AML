@@ -2,59 +2,79 @@
 # Dependencies
 node_modules/
 
-# Build artifacts
+# Environment
+.env
+.env.local
+.env.*
+
+# Build outputs
 dist/
 build/
 target/
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.swp
 
 # Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.Python
-env/
-venv/
-.venv/
-.ENV
-.ENV.local
 
-# Logs
-*.log
+# Compiled files
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.a
+*.out
 
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Environment variables
-.env
-.env.local
-*.env.*
-
-# Coverage reports
+# Coverage
 coverage/
 htmlcov/
 .coverage
 
-# MyPy cache
+# MyPy
 .mypy_cache/
-__pycache__/
 
-# PyTest cache
+# PyTest
 .pytest_cache/
 
-# Temporary files
-*.tmp
-*.temp
+# Gradle
+.gradle/
+
+# Julia
+julia-*/
+
+# Zig
+zig*/
+
+# Compressed files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
 ```

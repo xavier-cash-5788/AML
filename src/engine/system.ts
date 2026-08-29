@@ -74,6 +74,13 @@ function freshState(): SysState {
     semantic: semanticInit(),
     theoryOfMind: theoryOfMindInit(),
     spontaneity: spontaneityInit(),
+    brainZones: {
+      prefrontal: { intensity: 0, lastActive: now },
+      hippocampus: { intensity: 0, lastActive: now },
+      amygdala: { intensity: 0, lastActive: now },
+      striatum: { intensity: 0, lastActive: now },
+      temporal: { intensity: 0, lastActive: now },
+    },
   };
 }
 
