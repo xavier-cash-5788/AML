@@ -13,6 +13,11 @@ import {
   amygdalaDetect, computeRegime, hippocampusContextualiser, oldestUnresolved,
   prefrontalForce, reconsolidable, regulationInit, regulationTick,
 } from "./regulation";
+import { sleepInit, sleepUpdate, isSleeping, sleepSummary, effectivePromotionThreshold, effectiveDecayLambda } from "./sleep";
+import { attentionInit, attentionDecay, attentionSummary, addToFocus, autoAdjustFocusMode, cognitiveLoad } from "./attention";
+import { predictionInit, makePrediction, computePredictionError, dopamineSignalFromError, isSignificantSurprise, predictionSummary } from "./prediction";
+import { habitsInit, habitsDecay, habitsSummary, extractContext, reinforceHabit } from "./habits";
+import { semanticInit, semanticDecay, semanticSummary, extractSemanticFromEpisodic } from "./semantic";
 
 const LS_KEY = "mnemosyne.state.v1";
 const MAX_EVENTS = 260;
@@ -59,6 +64,11 @@ function freshState(): SysState {
     hormonesHistory: [],
     regulation: regulationInit(),
     recentValences: [],
+    sleep: sleepInit(),
+    attention: attentionInit(),
+    prediction: predictionInit(),
+    habits: habitsInit(),
+    semantic: semanticInit(),
   };
 }
 
@@ -87,6 +97,11 @@ class MemorySystem {
         hormonesHistory: persisted.hormonesHistory ?? [],
         regulation: persisted.regulation ?? base.regulation,
         recentValences: persisted.recentValences ?? [],
+        sleep: persisted.sleep ?? base.sleep,
+        attention: persisted.attention ?? base.attention,
+        prediction: persisted.prediction ?? base.prediction,
+        habits: persisted.habits ?? base.habits,
+        semantic: persisted.semantic ?? base.semantic,
       } as SysState;
       this.log("SEED", "memory/memory_scheduler", "Session restaurée depuis storage/ (localStorage)");
     } else {
@@ -120,7 +135,7 @@ class MemorySystem {
 
   private persist() {
     try {
-      const { config, memories, nodes, edges, events, chat, tickCount, totalForgotten, lastTick, hormones, hormonesHistory, regulation, recentValences } = this.state;
+      const { config, memories, nodes, edges, events, chat, tickCount, totalForgotten, lastTick, hormones, hormonesHistory, regulation, recentValences, sleep, attention, prediction, habits, semantic } = this.state;
       localStorage.setItem(
         LS_KEY,
         JSON.stringify({
@@ -129,6 +144,7 @@ class MemorySystem {
           chat: chat.slice(-80),
           tickCount, totalForgotten, lastTick,
           hormones, hormonesHistory: hormonesHistory.slice(-120), regulation, recentValences,
+          sleep, attention, prediction, habits, semantic,
         })
       );
     } catch {
@@ -182,19 +198,24 @@ class MemorySystem {
     const kept: Souvenir[] = [];
     for (const s of memories) {
       const f = forceOf(s, now, cfg);
-      if (s.statut === "contextualise" && f < cfg.memory.seuil_oubli && s.creeLe < now - 20000) {
+      // Utiliser les lambdas effectifs du sommeil pour le decay
+      const effectiveLambda = s.valence === "negatif" ? effectiveDecayLambdas.negatif : s.valence === "positif" ? effectiveDecayLambdas.positif : effectiveDecayLambdas.neutre;
+      const dtMin = Math.max(0, (now - s.creeLe) / 60000);
+      const fAdjusted = s.statut === "non_resolu" ? s.intensiteInitiale : clamp01(s.intensiteInitiale * Math.exp(-effectiveLambda * dtMin));
+      
+      if (s.statut === "contextualise" && fAdjusted < cfg.memory.seuil_oubli && s.creeLe < now - 20000) {
         oublies.push(s.texte);
-        this.log("OUBLI", "memory/decay_engine", `oubli actif : « ${trunc(s.texte, 52)} » (force ${f.toFixed(3)} < ${cfg.memory.seuil_oubli})`);
+        this.log("OUBLI", "memory/decay_engine", `oubli actif : « ${trunc(s.texte, 52)} » (force ${fAdjusted.toFixed(3)} < ${cfg.memory.seuil_oubli})`);
         continue;
       }
       let cur = s;
-      if (!s.promu && s.statut === "contextualise" && promotionScore(s, now, cfg) >= cfg.memory.seuil_promotion_graphe) {
-        cur = { ...cur, promu: true, intensiteInitiale: clamp01(Math.max(cur.intensiteInitiale, f + 0.1)) };
+      if (!s.promu && s.statut === "contextualise" && promotionScore(s, now, cfg) >= effectivePromotionThresholdValue) {
+        cur = { ...cur, promu: true, intensiteInitiale: clamp01(Math.max(cur.intensiteInitiale, fAdjusted + 0.1)) };
         for (const tid of cur.traits) {
           nodes = graphReinforce(nodes, tid, cfg.memory.max_variation_par_interaction, cfg.memory.max_variation_par_interaction, now);
         }
         promus.push(s.texte);
-        this.log("PROMOTION", "memory/decay_engine", `promotion vecteur → graphe : « ${trunc(s.texte, 52)} »`);
+        this.log("PROMOTION", "memory/decay_engine", `promotion vecteur → graphe : « ${trunc(s.texte, 52)} » (seuil sommeil-adjusté: ${effectivePromotionThresholdValue.toFixed(2)})`);
         this.log("CONSOLIDATION", "memory/graph_memory", `traits renforcés : ${cur.traits.length ? cur.traits.join(", ") : "aucun"} (+${cfg.memory.max_variation_par_interaction} max)`);
       }
       kept.push(cur);
@@ -232,6 +253,22 @@ class MemorySystem {
     const regBefore = this.state.regulation;
     const reg = regulationTick(regBefore, valMoy, nonResolus);
 
+    // 4b) sleep/ : cycle circadien veille/sommeil
+    this.flash("sleep");
+    const sleepBefore = this.state.sleep;
+    const sleep = sleepUpdate(sleepBefore, now);
+    if (sleep.phase !== sleepBefore.phase) {
+      this.log("SLEEP", "sleep", `changement de phase : ${sleepBefore.phase} → ${sleep.phase} — ${sleepSummary(sleep)}`);
+    }
+    
+    // Appliquer les modificateurs du sommeil au seuil de promotion et aux lambdas de decay
+    const effectivePromotionThresholdValue = effectivePromotionThreshold(cfg.memory.seuil_promotion_graphe, sleep.consolidationMultiplier);
+    const effectiveDecayLambdas = {
+      negatif: effectiveDecayLambda(cfg.memory.decay_lambda_negatif, sleep.decaySlowdown),
+      neutre: effectiveDecayLambda(cfg.memory.decay_lambda_neutre, sleep.decaySlowdown),
+      positif: effectiveDecayLambda(cfg.memory.decay_lambda_positif, sleep.decaySlowdown),
+    };
+
     // reconsolidation « thérapeutique » : le préfrontal restauré re-contextualise
     if (reconsolidable(reg, valMoy) && nonResolus > 0) {
       const cible = oldestUnresolved(memories);
@@ -267,15 +304,25 @@ class MemorySystem {
     this.state.nodes = nodes;
     this.state.hormones = horm;
     this.state.regulation = reg;
+    this.state.sleep = sleep;
     this.state.sizeBytes = taille;
     this.state.nextTickAt = now + cfg.memory.tic_interval_seconds * 1000;
     this.pushHormonesHistory(now, horm);
+    
+    // Appliquer decay attention et habits au tick
+    const attentionAfter = attentionDecay(this.state.attention, now);
+    const habitsAfter = habitsDecay(this.state.habits, now);
+    const semanticAfter = semanticDecay(this.state.semantic);
+    this.state.attention = attentionAfter;
+    this.state.habits = habitsAfter;
+    this.state.semantic = semanticAfter;
+    
     this.log(
       "TIC",
       "memory/memory_scheduler",
-      `tic n°${this.state.tickCount} — decay recalculé sur ${this.state.lastTick.decayes} souvenir(s), ${promus.length} promotion(s), ${oublies.length + dropped.length} oubli(s), hormones en redescente, taille ${fmtBytes(taille)}`
+      `tic n°${this.state.tickCount} — decay recalculé sur ${this.state.lastTick.decayes} souvenir(s), ${promus.length} promotion(s), ${oublies.length + dropped.length} oubli(s), hormones en redescente, ${sleepSummary(sleep)}, ${attentionSummary(attentionAfter)}, ${habitsSummary(habitsAfter)}`
     );
-    this.log("DECAY", "memory/decay_engine", `λ appliqué : nég ${cfg.memory.decay_lambda_negatif} · neu ${cfg.memory.decay_lambda_neutre} · pos ${cfg.memory.decay_lambda_positif} (les traces à vif échappent au decay)`);
+    this.log("DECAY", "memory/decay_engine", `λ appliqué : nég ${cfg.memory.decay_lambda_negatif} · neu ${cfg.memory.decay_lambda_neutre} · pos ${cfg.memory.decay_lambda_positif} (modulé par sommeil: ×${sleep.decaySlowdown.toFixed(2)}) — les traces à vif échappent au decay`);
   }
 
   // ── api/server.py : POST /chat ────────────────────────────────────────────

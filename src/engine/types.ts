@@ -157,4 +157,10 @@ export interface SysState {
   hormonesHistory: HormonesHistoryPoint[];
   regulation: RegulationState;
   recentValences: { v: number; t: number }[];
+  // Nouveaux modules (v5)
+  sleep: import("./sleep").SleepState;
+  attention: import("./attention").AttentionState;
+  prediction: import("./prediction").PredictionState;
+  habits: import("./habits").HabitsState;
+  semantic: import("./semantic").SemanticNetwork;
 }
