@@ -1,0 +1,37 @@
+{
+  "hormones": {
+    "baseline_dopamine": 0.5,
+    "baseline_serotonine": 0.5,
+    "baseline_adrenaline": 0.3,
+    "baseline_cortisol": 0.3,
+    "baseline_ocytocine": 0.5,
+    "vitesse_montee": 0.1,
+    "vitesse_descente": 0.02,
+    "facteur_surprise_dopamine": 0.15,
+    "facteur_reussite_dopamine": 0.1,
+    "facteur_echec_cortisol": 0.08,
+    "facteur_social_ocytocine": 0.1
+  },
+  "effets_hormonaux": {
+    "dopamine": {
+      "sur_apprentissage": 1.2,
+      "sur_motivation": 1.1
+    },
+    "serotonine": {
+      "sur_humeur": 1.1,
+      "sur_patience": 1.15
+    },
+    "adrenaline": {
+      "sur_vigilance": 1.3,
+      "sur_stress": 1.2
+    },
+    "cortisol": {
+      "sur_stress": 1.25,
+      "sur memoire_negatif": 1.1
+    },
+    "ocytocine": {
+      "sur_empathie": 1.2,
+      "sur_confiance": 1.15
+    }
+  }
+}

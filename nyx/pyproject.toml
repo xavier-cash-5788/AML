@@ -1,0 +1,142 @@
+[build-system]
+requires = ["setuptools>=69.0"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "nyx"
+version = "2.0.0"
+description = "Agent conversationnel local avec mémoire persistante, graphe de traits et apprentissage par feedback humain — successeur du prototype Mnémosyne."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "À définir par l'auteur du projet" }
+authors = [
+    { name = "Auteur du projet Nyx" }
+]
+
+# Note volontaire : ce projet n'est pas publié sur PyPI. La section [project]
+# sert avant tout à ce que `pip install -e .` fonctionne proprement en local
+# et que les outils (pytest, ruff) trouvent le package nyx/ sans configuration
+# supplémentaire.
+
+dependencies = [
+    "requests==2.32.3",
+    "numpy==1.26.4",
+    "torch==2.4.1",
+    "scikit-learn==1.5.1",
+    "apscheduler==3.10.4",
+    "filelock==3.15.4",
+    "pydantic==2.8.2",
+    "flask==3.0.3",
+    "markdown==3.7",
+]
+# Cette liste doit rester identique à requirements.txt. requirements.txt
+# reste le fichier de référence pour `pip install -r requirements.txt`
+# (installation rapide, sans construire le package) ; cette section permet
+# `pip install -e .` (installation en mode développement, avec les commandes
+# console définies plus bas).
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.2",
+    "pytest-cov==5.0.0",
+    "ruff==0.6.3",
+    "black==24.8.0",
+    "mypy==1.11.2",
+]
+# Séparées des dépendances de production : un déploiement final n'a pas
+# besoin du linter ou du formateur, seulement du code qui tourne.
+
+[project.scripts]
+nyx = "nyx.main:main"
+# Permet de lancer l'agent avec la simple commande `nyx` une fois le projet
+# installé en mode développement (pip install -e .), plutôt que d'exiger
+# `python -m nyx.main` à chaque fois.
+
+
+[tool.setuptools.packages.find]
+include = ["nyx*", "interface*"]
+exclude = ["tests*", "data*", "config*", "scripts*"]
+# On ne packages QUE le code — jamais les données (data/), qui sont propres
+# à chaque installation locale et ne doivent jamais être versionnées ni
+# embarquées dans un paquet distribuable.
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Formatage du code — Black
+# ══════════════════════════════════════════════════════════════════════════
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+# 100 caractères plutôt que les 88 par défaut : beaucoup de lignes de ce
+# projet contiennent des noms de variables volontairement explicites
+# (ex: decay_lambda_negatif, seuil_promotion_graphe) pour rester lisibles
+# sans avoir à consulter la documentation en parallèle — la limite par
+# défaut de Black les aurait coupées trop souvent.
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Linting — Ruff (remplace flake8 + isort + une partie de pylint, plus rapide)
+# ══════════════════════════════════════════════════════════════════════════
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = ["data", ".venv"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # erreurs de style pycodestyle
+    "F",   # erreurs logiques pyflakes (variables inutilisées, imports morts...)
+    "I",   # tri des imports (remplace isort)
+    "N",   # conventions de nommage (PEP8)
+    "B",   # bugbear : détecte des pièges Python courants
+    "UP",  # suggère les syntaxes modernes de Python (pyupgrade)
+]
+ignore = [
+    "E501",  # longueur de ligne déjà gérée par Black, pas la peine de la
+             # vérifier deux fois avec des règles potentiellement différentes
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["N802"]
+# Autorise les noms de fonctions de test type test_Force_Decay si besoin
+# de coller au nom exact d'une fonction testée avec une casse différente.
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Vérification de types — mypy
+# ══════════════════════════════════════════════════════════════════════════
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+# disallow_untyped_defs reste à false pour l'instant : le projet démarre,
+# beaucoup de fonctions n'ont pas encore d'annotations de type complètes.
+# À passer à true une fois nyx/core/ et nyx/memory/ entièrement typés —
+# ce sont les modules les plus critiques à vérifier statiquement en
+# priorité, car une erreur de type dans le calcul de decay ou de similarité
+# serait silencieuse mais fausserait tout le comportement en aval.
+exclude = ["tests/", "scripts/"]
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Tests — pytest
+# ══════════════════════════════════════════════════════════════════════════
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --cov=nyx --cov-report=term-missing"
+# --cov=nyx : mesure la couverture de test du package logique uniquement,
+# pas de interface/ (couche de présentation, testée manuellement pour
+# l'instant) ni de scripts/ (tâches ponctuelles, moins critiques à couvrir
+# automatiquement qu'un bug dans le calcul de decay ou de régulation).
+
+[tool.coverage.run]
+source = ["nyx"]
+omit = [
+    "nyx/llm/*",
+    # Les appels réseau à Ollama sont testés via des mocks dans tests/,
+    # pas mesurés en couverture brute : la couverture utile ici, ce sont
+    # les modules de logique pure (core/, memory/, regulation/, learning/).
+]

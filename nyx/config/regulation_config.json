@@ -1,0 +1,15 @@
+{
+  "regulation": {
+    "seuil_sensibilisation_amygdale": 0.7,
+    "seuil_desensibilisation": 0.3,
+    "taux_sensibilisation": 0.1,
+    "taux_desensibilisation": 0.05,
+    "taux_recuperation_prefrontal": 0.05,
+    "facteur_attenuation_stress": 0.3,
+    "duree_non_resolu_minutes": 30
+  },
+  "hippocampe": {
+    "fenetre_contextuelle_minutes": 10,
+    "seuil_inhibition_stress": 0.6
+  }
+}

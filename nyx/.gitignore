@@ -1,0 +1,88 @@
+# ══════════════════════════════════════════════════════════════════════════
+# Nyx — .gitignore
+# ══════════════════════════════════════════════════════════════════════════
+# Principe directeur : ce dépôt versionne le CODE, jamais les DONNÉES.
+# Le contenu de data/ est propre à chaque installation locale (souvenirs
+# personnels, historique de conversation, feedback humain) — le committer
+# reviendrait à publier le contenu privé des échanges avec l'agent.
+# ══════════════════════════════════════════════════════════════════════════
+
+
+# ── Données persistantes de l'agent ─────────────────────────────────────
+# Tout le dossier data/ est local et personnel : souvenirs, graphe de
+# traits, historique de chat, feedback, poids de l'auto-encodeur entraîné.
+data/
+!data/.gitkeep
+# Le .gitkeep permet de garder la structure du dossier data/ visible dans
+# le dépôt (utile pour qu'un nouveau clone sache que le dossier doit
+# exister) sans jamais versionner son contenu réel.
+
+
+# ── Configuration personnelle ────────────────────────────────────────────
+# default_config.json et primitive_seed.json restent versionnés (ce sont
+# des valeurs par défaut partagées du projet). En revanche, la surcharge
+# personnelle de l'utilisateur ne doit jamais être publiée : elle peut
+# contenir des choix de modèle, des chemins de disque, ou des réglages
+# propres à sa machine.
+config/user_config.json
+
+
+# ── Environnement virtuel Python ─────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+
+# ── Artefacts de build et de packaging Python ────────────────────────────
+build/
+dist/
+*.egg-info/
+*.egg
+__pycache__/
+*$py.class
+
+
+# ── Caches d'outils de développement ──────────────────────────────────────
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+
+# ── Fichiers d'environnement et secrets ──────────────────────────────────
+# Même si le projet est 100% local et ne nécessite aucune clé API cloud,
+# ce garde-fou reste une bonne pratique par défaut si un jour une variable
+# sensible (ex: un jeton pour une intégration future) devait être ajoutée.
+.env
+.env.*
+!.env.example
+
+
+# ── Modèles et poids entraînés localement ────────────────────────────────
+# Les poids de l'auto-encodeur (compression.py) et du classifieur appris
+# (emotion/classifier.py) sont générés par scripts/train_*.py à partir des
+# données personnelles de l'utilisateur — ils ne doivent pas être publiés
+# ni committés, exactement comme data/.
+*.npz
+*.pt
+*.pkl
+*.joblib
+
+
+# ── Fichiers spécifiques aux éditeurs et systèmes d'exploitation ─────────
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+
+# ── Logs ──────────────────────────────────────────────────────────────────
+# events_log.jsonl est déjà couvert par l'exclusion de data/ ci-dessus,
+# mais on garde cette règle explicite au cas où un log serait un jour
+# généré ailleurs dans l'arborescence (ex: logs de scripts/ exécutés
+# manuellement pendant le développement).
+*.log
+logs/

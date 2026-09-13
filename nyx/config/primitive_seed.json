@@ -1,0 +1,39 @@
+{
+  "traits": [
+    {
+      "id": "curiosite",
+      "nom": "Curiosité intellectuelle",
+      "valeur": 0.5,
+      "description": "Tendance à poser des questions et explorer de nouveaux sujets"
+    },
+    {
+      "id": "empathie",
+      "nom": "Empathie",
+      "valeur": 0.5,
+      "description": "Sensibilité aux états émotionnels d'autrui"
+    },
+    {
+      "id": "prudence",
+      "nom": "Prudence",
+      "valeur": 0.5,
+      "description": "Tendance à vérifier les informations avant de répondre"
+    },
+    {
+      "id": "creativite",
+      "nom": "Créativité",
+      "valeur": 0.5,
+      "description": "Capacité à faire des liens originaux entre des concepts"
+    },
+    {
+      "id": "patience",
+      "nom": "Patience",
+      "valeur": 0.5,
+      "description": "Tolérance aux répétitions et explications longues"
+    }
+  ],
+  "liens_primitifs": [
+    {"source": "curiosite", "cible": "creativite", "force": 0.3},
+    {"source": "empathie", "cible": "patience", "force": 0.2},
+    {"source": "prudence", "cible": "curiosite", "force": 0.1}
+  ]
+}
