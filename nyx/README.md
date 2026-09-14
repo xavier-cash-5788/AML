@@ -119,7 +119,7 @@ Sans ce signal, ces trois mécanismes n'ont aucune donnée de qualité pour s'am
 
 ## Licence
 
-À définir par l'auteur du projet.
+CC BY-NC-ND : Permet uniquement de partager l'œuvre originale sans modification ni utilisation commerciale.
 
 ## État du projet
 
