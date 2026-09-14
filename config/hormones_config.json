@@ -1,0 +1,33 @@
+{
+  "dopamine": {
+    "baseline": 0.5,
+    "vitesse_montee": 0.1,
+    "vitesse_descente": 0.05,
+    "effet_sur_prise_decision": 0.2
+  },
+  "serotonine": {
+    "baseline": 0.5,
+    "vitesse_montee": 0.08,
+    "vitesse_descente": 0.04,
+    "effet_sur_humeur": 0.25
+  },
+  "noradrenaline": {
+    "baseline": 0.3,
+    "vitesse_montee": 0.15,
+    "vitesse_descente": 0.08,
+    "effet_sur_vigilance": 0.3
+  },
+  "ocytocine": {
+    "baseline": 0.4,
+    "vitesse_montee": 0.06,
+    "vitesse_descente": 0.03,
+    "effet_sur_lien_social": 0.2
+  },
+  "cortisol": {
+    "baseline": 0.2,
+    "vitesse_montee": 0.12,
+    "vitesse_descente": 0.02,
+    "effet_sur_stress": 0.35
+  },
+  "vitesse_modulation_generale": 0.05
+}

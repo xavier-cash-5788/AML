@@ -1,0 +1,9 @@
+{
+  "seuil_alerte_amygdale": 0.6,
+  "seuil_crise_amygdale": 0.85,
+  "force_regulation_prefrontal": 0.7,
+  "taux_recuperation_stress": 0.02,
+  "fenetre_contextuelle_minutes": 15,
+  "sensibilisation_duree_minutes": 30,
+  "facteur_sensibilisation": 1.5
+}

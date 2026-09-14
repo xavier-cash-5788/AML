@@ -1,0 +1,49 @@
+{
+  "llm": {
+    "modele_generation": "llama3.2:3b",
+    "modele_embedding": "nomic-embed-text",
+    "temperature": 0.7,
+    "max_tokens": 512,
+    "timeout_secondes": 60
+  },
+  "memory": {
+    "plafond_memoire_octets": 52428800,
+    "seuil_oubli": 0.15,
+    "seuil_consideration_permanence": 0.7,
+    "seuil_promotion_graphe": 0.8,
+    "decay_lambda_neutre": 0.01,
+    "decay_lambda_positif": 0.005,
+    "decay_lambda_negatif": 0.03,
+    "facteur_valence_decay": 0.5
+  },
+  "regulation": {
+    "seuil_alerte_amygdale": 0.6,
+    "seuil_crise_amygdale": 0.85,
+    "force_regulation_prefrontal": 0.7,
+    "taux_recuperation_stress": 0.02,
+    "fenetre_contextuelle_minutes": 15
+  },
+  "hormones": {
+    "dopamine_baseline": 0.5,
+    "serotonine_baseline": 0.5,
+    "noradrenaline_baseline": 0.3,
+    "ocytocine_baseline": 0.4,
+    "cortisol_baseline": 0.2,
+    "vitesse_modulation": 0.05
+  },
+  "apprentissage": {
+    "q_learning_alpha": 0.1,
+    "q_learning_gamma": 0.9,
+    "epsilon_initial": 1.0,
+    "epsilon_final": 0.1,
+    "epsilon_decay": 0.995,
+    "taille_population_evolution": 20,
+    "taux_mutation": 0.1,
+    "meta_lr_rpe_threshold": 0.3
+  },
+  "interface": {
+    "mode": "cli",
+    "port_web": 5000,
+    "langue": "fr"
+  }
+}

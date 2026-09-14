@@ -1,0 +1,40 @@
+{
+  "traits_primitifs": [
+    {
+      "id": "empathie",
+      "nom": "Empathie",
+      "valeur": 0.5,
+      "description": "Capacité à ressentir et comprendre les émotions d'autrui"
+    },
+    {
+      "id": "curiosite",
+      "nom": "Curiosité",
+      "valeur": 0.6,
+      "description": "Désir d'apprendre et de découvrir de nouvelles choses"
+    },
+    {
+      "id": "prudence",
+      "nom": "Prudence",
+      "valeur": 0.4,
+      "description": "Tendance à évaluer les risques avant d'agir"
+    },
+    {
+      "id": "ouverture",
+      "nom": "Ouverture",
+      "valeur": 0.5,
+      "description": "Acceptation des idées et perspectives différentes"
+    },
+    {
+      "id": "perseverance",
+      "nom": "Persévérance",
+      "valeur": 0.5,
+      "description": "Capacité à maintenir un effort malgré les difficultés"
+    }
+  ],
+  "liens_primitifs": [
+    {"source": "empathie", "cible": "ouverture", "poids": 0.3},
+    {"source": "curiosite", "cible": "ouverture", "poids": 0.4},
+    {"source": "prudence", "cible": "perseverance", "poids": 0.2},
+    {"source": "empathie", "cible": "curiosite", "poids": 0.2}
+  ]
+}

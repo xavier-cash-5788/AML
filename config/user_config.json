@@ -1,0 +1,7 @@
+{
+  "_commentaire": "Fichier de configuration personnelle - surcharge les valeurs de default_config.json",
+  "_instructions": "Copiez ici uniquement les clés que vous souhaitez modifier. Ne copiez pas tout le fichier default_config.json.",
+  "interface": {
+    "mode": "cli"
+  }
+}
