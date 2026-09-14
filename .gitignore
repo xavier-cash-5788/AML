@@ -1,48 +1,41 @@
 ```
-# Dependencies
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.pytest_cache/
-.mypy_cache/
-.coverage
-htmlcov/
-
-# Virtual environments
+.Python
+env/
 venv/
 .venv/
-env/
-ENV/
-
-# Build and distribution artifacts
-build/
-dist/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Logs
-*.log
-
-# Environment variables
+.ENV
+.ENV.local
 .env
 .env.local
 .env.*
+.python-version
+.pytest_cache/
+.mypy_cache/
+.coverage
+coverage/
+htmlcov/
 
-# IDE specific
+# Build and distribution artifacts
+dist/
+build/
+*.egg-info/
+.eggs/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# IDE and editor files
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-.DS_Store
-Thumbs.db
-
-# Coverage reports
-coverage/
-htmlcov/
-.coverage.*
+*.tmp
+*.log
 
 # OS generated files
 .DS_Store
@@ -52,4 +45,26 @@ htmlcov/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Compression and archives
+*.zip
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.gz
+*.rar
+*.7z
+*.tar
+*.bz2
+*.xz
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
 ```
